@@ -1,0 +1,130 @@
+
+name: Remote Chromium Browser
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: remote-chromium-browser
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Install ngrok
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+        run: |
+          set -euo pipefail
+
+          curl -fsSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+            | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
+            | sudo tee /etc/apt/sources.list.d/ngrok.list
+
+          sudo apt-get update
+          sudo apt-get install -y ngrok jq
+
+          ngrok config add-authtoken "$NGROK_AUTHTOKEN"
+
+      - name: Start Chromium
+        run: |
+          docker pull lscr.io/linuxserver/chromium:latest
+
+          docker run -d \
+            --name chromium \
+            --publish 127.0.0.1:3000:3000 \
+            --shm-size=1g \
+            -e PUID=1000 \
+            -e PGID=1000 \
+            -e TZ=America/New_York \
+            lscr.io/linuxserver/chromium:latest
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/ \
+              -o /dev/null; then
+              echo "Chromium interface is ready."
+              exit 0
+            fi
+            sleep 5
+          done
+
+          docker logs chromium
+          echo "Chromium failed to start."
+          exit 1
+
+      - name: Start secure tunnel
+        env:
+          BROWSER_PASSWORD: ${{ secrets.BROWSER_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ "${#BROWSER_PASSWORD}" -lt 16 ]; then
+            echo "BROWSER_PASSWORD must be at least 16 characters."
+            exit 1
+          fi
+
+          ngrok http 3000 \
+            --basic-auth="browser:${BROWSER_PASSWORD}" \
+            --log=stdout \
+            > "$RUNNER_TEMP/ngrok.log" 2>&1 &
+
+          echo $! > "$RUNNER_TEMP/ngrok.pid"
+
+          for i in $(seq 1 60); do
+            URL=$(curl -fsS http://127.0.0.1:4040/api/tunnels \
+              | jq -r \
+                '[.tunnels[] | select(.proto == "https")][0].public_url // empty' \
+              2>/dev/null || true)
+
+            if [ -n "$URL" ]; then
+              echo "=========================================="
+              echo "REMOTE BROWSER READY"
+              echo "URL: $URL"
+              echo "Username: browser"
+              echo "Password: your BROWSER_PASSWORD secret"
+              echo "=========================================="
+              exit 0
+            fi
+
+            if ! kill -0 "$(cat "$RUNNER_TEMP/ngrok.pid")" 2>/dev/null; then
+              cat "$RUNNER_TEMP/ngrok.log"
+              echo "ngrok exited unexpectedly."
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          cat "$RUNNER_TEMP/ngrok.log"
+          echo "Could not establish tunnel."
+          exit 1
+
+      - name: Keep browser available
+        run: |
+          echo "Browser session is running."
+          echo "Open the URL in the workflow logs."
+          echo "Stop the workflow to end the session."
+
+          while true; do
+            if ! docker inspect -f '{{.State.Running}}' chromium \
+              | grep -qx true; then
+              echo "Chromium stopped unexpectedly."
+              docker logs chromium
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker rm -f chromium 2>/dev/null || true
+          if [ -f "$RUNNER_TEMP/ngrok.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/ngrok.pid")" 2>/dev/null || true
+          fi
