@@ -156,7 +156,7 @@ jobs:
             const expiry = value.slice(0, i);
             const supplied = value.slice(i + 1);
 
-            if (!/^\\d+$/.test(expiry) ||
+            if (!/^\d+$/.test(expiry) ||
                 Number(expiry) <= Math.floor(Date.now() / 1000) ||
                 !/^[a-f0-9]{64}$/.test(supplied)) {
               return false;
@@ -173,7 +173,6 @@ jobs:
             res.writeHead(200, {
               'Content-Type': 'text/html; charset=utf-8',
               'Cache-Control': 'no-store',
-              'Content-Security-Policy': "frame-ancestors *"
             });
 
             res.end(`<!doctype html>
@@ -290,7 +289,7 @@ jobs:
                 .map(policy => policy
                   .split(';')
                   .filter(directive =>
-                    !/^\\s*frame-ancestors(?:\\s|$)/i.test(directive)
+                    !/^\s*frame-ancestors(?:\s|$)/i.test(directive)
                   )
                   .join(';'))
                 .filter(Boolean);
