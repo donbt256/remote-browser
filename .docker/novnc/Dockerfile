@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --create-home --uid 1000 --shell /bin/bash browser \
+RUN useradd --create-home --shell /bin/bash browser \
     && mkdir -p /config /home/browser/.vnc \
     && chown -R browser:browser /config /home/browser
 
