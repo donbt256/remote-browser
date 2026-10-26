@@ -19,6 +19,9 @@ jobs:
       PROFILE_REPO: donbt256/browser-profile-storage
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Install dependencies
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
