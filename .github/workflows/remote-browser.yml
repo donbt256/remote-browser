@@ -74,26 +74,23 @@ jobs:
 
           chmod -R u+rwX "$CONFIG_DIR"
 
-      - name: Start Chromium
+      - name: Build and start noVNC desktop
         run: |
           set -euo pipefail
 
-          docker pull lscr.io/linuxserver/chromium:latest
+          docker build -t remote-browser-novnc .docker/novnc
 
           docker run -d \
             --name chromium \
-            --publish 127.0.0.1:3000:3000 \
+            --publish 127.0.0.1:6080:6080 \
             --shm-size=1g \
             --volume "$RUNNER_TEMP/chromium-config:/config" \
-            --env PUID=1000 \
-            --env PGID=1000 \
-            --env TZ=America/New_York \
-            lscr.io/linuxserver/chromium:latest
+            remote-browser-novnc
 
           for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:3000/ \
+            if curl -fsS http://127.0.0.1:6080/vnc.html \
               -o /dev/null; then
-              echo "Chromium interface is ready."
+              echo "noVNC desktop interface is ready."
               exit 0
             fi
             sleep 5
@@ -128,7 +125,7 @@ jobs:
           }
 
           const proxy = httpProxy.createProxyServer({
-            target: 'http://127.0.0.1:3000',
+            target: 'http://127.0.0.1:6080',
             changeOrigin: true,
             ws: true
           });
@@ -261,7 +258,7 @@ jobs:
               return res.end();
             }
 
-            proxy.web(req, res);
+            if (url.pathname === '/') {\n              res.writeHead(302, {\n                'Cache-Control': 'no-store',\n                'Location': '/vnc.html?autoconnect=true&resize=remote&path=websockify'\n              });\n              return res.end();\n            }\n\n            proxy.web(req, res);
           });
 
           server.on('upgrade', (req, socket, head) => {
@@ -304,10 +301,10 @@ jobs:
           });
 
           proxy.on('error', (err, req, res) => {
-            console.error('Chromium proxy error:', err.message);
+            console.error('noVNC proxy error:', err.message);
             if (res && !res.headersSent && typeof res.writeHead === 'function') {
               res.writeHead(502);
-              res.end('Chromium is unavailable.');
+              res.end('The noVNC desktop is unavailable.');
             } else if (res && typeof res.destroy === 'function') {
               res.destroy();
             }
@@ -354,7 +351,7 @@ jobs:
 
             if [ -n "$URL" ]; then
               {
-                echo "## Remote Chromium"
+                echo "## Remote Chromium (noVNC)"
                 echo
                 echo "URL: $URL"
                 echo
@@ -362,7 +359,7 @@ jobs:
                 echo "Sign in using your BROWSER_PASSWORD secret."
               } >> "$GITHUB_STEP_SUMMARY"
 
-              echo "Browser URL: $URL"
+              echo "noVNC URL: $URL"
               exit 0
             fi
 
@@ -387,7 +384,7 @@ jobs:
           while true; do
             if ! docker inspect -f '{{.State.Running}}' chromium \
               | grep -qx true; then
-              echo "Chromium stopped unexpectedly."
+              echo "The noVNC desktop stopped unexpectedly."
               docker logs chromium
               exit 1
             fi
