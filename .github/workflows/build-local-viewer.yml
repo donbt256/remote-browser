@@ -31,7 +31,7 @@ jobs:
           import sys
           path = Path(sys.argv[1])
           source = path.read_text()
-          pattern = r"    async _handleFocus\\(event\\) \\{.*?\\n    \\}"
+          pattern = r"    async _handleFocus\(event\) \{.*?\n    \}"
           replacement = """    async _handleFocus(event) {
                   if (!(await this._ensureAvailable())) return;
                   try {
