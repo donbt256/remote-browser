@@ -150,7 +150,7 @@ jobs:
             if (i < 0) return false;
             const expiry = value.slice(0, i);
             const supplied = value.slice(i + 1);
-            if (!/^\\d+$/.test(expiry) ||
+            if (!/^\d+$/.test(expiry) ||
                 Number(expiry) <= Math.floor(Date.now() / 1000) ||
                 Number(expiry) > Math.floor(Date.now() / 1000) + 125 ||
                 !/^[a-f0-9]{64}$/.test(supplied)) return false;
@@ -326,8 +326,8 @@ jobs:
             const ticket = url.searchParams.get('ticket') || '';
             if (!validTicket(ticket)) {
               socket.end(
-                'HTTP/1.1 401 Unauthorized\\r\\n' +
-                'Connection: close\\r\\n\\r\\n'
+                'HTTP/1.1 401 Unauthorized\r\n' +
+                'Connection: close\r\n\r\n'
               );
               return;
             }
