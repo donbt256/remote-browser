@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Local noVNC Viewer</title>
+  <style>
+    :root { color-scheme: dark; font: 16px system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; background: #111; color: #eee; }
+    body { display: grid; place-items: center; }
+    #setup { width: min(460px, calc(100% - 32px)); }
+    h1 { font-size: 1.35rem; }
+    form { display: grid; gap: 12px; }
+    label { display: grid; gap: 6px; }
+    input { width: 100%; padding: 11px; border: 1px solid #555; border-radius: 5px; background: #202020; color: #fff; font: inherit; }
+    button { padding: 11px 14px; border: 0; border-radius: 5px; background: #e5e5e5; color: #111; font: inherit; cursor: pointer; }
+    #status { min-height: 1.4em; color: #bbb; overflow-wrap: anywhere; }
+    #screen { display: none; position: fixed; inset: 0; width: 100%; height: 100%; }
+    body.connected { display: block; }
+    body.connected #setup { display: none; }
+    body.connected #screen { display: block; }
+    #toolbar { position: fixed; z-index: 2; top: 8px; right: 8px; display: flex; gap: 8px; opacity: .2; }
+    #toolbar:hover { opacity: 1; }
+    #toolbar button { padding: 6px 9px; }
+  </style>
+</head>
+<body>
+  <main id="setup">
+    <h1>Local noVNC Viewer</h1>
+    <p>The viewer files run locally. Only the remote desktop connection leaves this device.</p>
+    <form id="connect-form">
+      <label>Remote browser URL
+        <input id="server" type="url" placeholder="https://your-ngrok-host.ngrok-free.app" required autocomplete="url">
+      </label>
+      <label>Browser password
+        <input id="password" type="password" required autocomplete="current-password">
+      </label>
+      <button id="connect" type="submit">Connect</button>
+    </form>
+    <p id="status" role="status"></p>
+  </main>
+  <div id="screen" aria-label="Remote desktop"></div>
+  <nav id="toolbar" aria-label="Viewer controls">
+    <button id="fullscreen" type="button">Fullscreen</button>
+    <button id="disconnect" type="button">Disconnect</button>
+  </nav>
+  <script type="module">
+    import RFB from "./vendor/noVNC/core/rfb.js";
+
+    const form = document.querySelector("#connect-form");
+    const serverInput = document.querySelector("#server");
+    const passwordInput = document.querySelector("#password");
+    const status = document.querySelector("#status");
+    const screen = document.querySelector("#screen");
+    let rfb = null;
+
+    function normalizedBase(value) {
+      const base = new URL(value.trim());
+      if (!["https:", "http:"].includes(base.protocol)) throw new Error("Use an http:// or https:// URL.");
+      if (base.username || base.password) throw new Error("Do not put credentials in the URL.");
+      return base;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (rfb) rfb.disconnect();
+      const button = document.querySelector("#connect");
+      button.disabled = true;
+      status.textContent = "Authenticating…";
+      try {
+        const base = normalizedBase(serverInput.value);
+        if (base.protocol !== "https:" && base.hostname !== "localhost" && base.hostname !== "127.0.0.1") {
+          throw new Error("Use the HTTPS URL shown in the GitHub Actions summary.");
+        }
+        base.pathname = "/api/session";
+        base.search = "ngrok-skip-browser-warning=true";
+        base.hash = "";
+        const response = await fetch(base, {
+          method: "POST",
+          mode: "cors",
+          headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+          body: new URLSearchParams({ password: passwordInput.value })
+        });
+        if (!response.ok) throw new Error("Authentication request failed (HTTP " + response.status + ").");
+        const data = await response.json();
+        if (!data.ticket) throw new Error(data.error || "The server did not return a connection ticket.");
+
+        const ws = new URL("/websockify", serverInput.value.trim());
+        ws.protocol = ws.protocol === "https:" ? "wss:" : "ws:";
+        ws.searchParams.set("ticket", data.ticket);
+        ws.searchParams.set("ngrok-skip-browser-warning", "true");
+
+        screen.replaceChildren();
+        document.body.classList.add("connected");
+        rfb = new RFB(screen, ws.toString());
+        rfb.scaleViewport = true;
+        rfb.resizeSession = true;
+        rfb.showDotCursor = true;
+        rfb.addEventListener("connect", () => { status.textContent = "Connected."; });
+        rfb.addEventListener("disconnect", (e) => {
+          document.body.classList.remove("connected");
+          status.textContent = e.detail.clean ? "Disconnected." : "Connection lost. Check the Actions run and URL.";
+          rfb = null;
+        });
+        rfb.addEventListener("credentialsrequired", () => {
+          status.textContent = "The VNC server unexpectedly requested another password.";
+        });
+        status.textContent = "Connecting to remote desktop…";
+      } catch (error) {
+        status.textContent = error.message || String(error);
+        document.body.classList.remove("connected");
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.querySelector("#disconnect").addEventListener("click", () => {
+      if (rfb) rfb.disconnect();
+      else document.body.classList.remove("connected");
+    });
+    document.querySelector("#fullscreen").addEventListener("click", async () => {
+      try {
+        if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+        else await document.exitFullscreen();
+      } catch (error) { status.textContent = "Fullscreen unavailable: " + error.message; }
+    });
+  </script>
+</body>
+</html>
