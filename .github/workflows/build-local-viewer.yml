@@ -22,6 +22,39 @@ jobs:
           set -euo pipefail
           git clone --depth 1 https://github.com/novnc/noVNC.git "$RUNNER_TEMP/noVNC"
           mkdir -p "$RUNNER_TEMP/package"
+          # Avoid repeatedly triggering Chrome's clipboard permission prompt on
+          # every focus event. Read automatically only after permission is granted;
+          # the viewer's Enable clipboard button makes the initial request explicit.
+          python3 - "$RUNNER_TEMP/noVNC/core/clipboard.js" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          source = path.read_text()
+          old = """    async _handleFocus(event) {
+                if (!(await this._ensureAvailable())) return;
+                try {
+                    const text = await navigator.clipboard.readText();
+                    this.onpaste(text);
+                } catch (error) {
+                    Log.Error("Clipboard read failed: ", error);
+                }
+            }"""
+          new = """    async _handleFocus(event) {
+                if (!(await this._ensureAvailable())) return;
+                try {
+                    if (!navigator.permissions?.query) return;
+                    const permission = await navigator.permissions.query({ name: 'clipboard-read' });
+                    if (permission.state !== 'granted') return;
+                    const text = await navigator.clipboard.readText();
+                    this.onpaste(text);
+                } catch (error) {
+                    Log.Error("Clipboard read failed: ", error);
+                }
+            }"""
+          if old not in source:
+              raise SystemExit("Could not locate noVNC clipboard focus handler; refusing to build an unpatched viewer.")
+          path.write_text(source.replace(old, new, 1))
+          PY
           npm install --prefix "$RUNNER_TEMP/build-tools" esbuild
           "$RUNNER_TEMP/build-tools/node_modules/.bin/esbuild" \
             "$RUNNER_TEMP/noVNC/core/rfb.js" \
