@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Permissions-Policy" content="clipboard-read=(), clipboard-write=()">
   <title>Local noVNC Viewer</title>
   <style>
     :root { color-scheme: dark; font: 16px system-ui, sans-serif; }
@@ -43,27 +42,10 @@
   </main>
   <div id="screen" aria-label="Remote desktop"></div>
   <nav id="toolbar" aria-label="Viewer controls">
+    <button id="clipboard" type="button">Enable clipboard</button>
     <button id="fullscreen" type="button">Fullscreen</button>
     <button id="disconnect" type="button">Disconnect</button>
   </nav>
-  <script>
-    // This viewer deliberately disables browser clipboard access. noVNC can
-    // still display remote clipboard text through its own protocol events,
-    // but the local browser will not be asked for clipboard permission.
-    try {
-      Object.defineProperty(Navigator.prototype, "clipboard", {
-        configurable: false,
-        get() {
-          return Object.freeze({
-            readText: () => Promise.reject(new DOMException("Clipboard access disabled in this viewer.", "NotAllowedError")),
-            writeText: () => Promise.reject(new DOMException("Clipboard access disabled in this viewer.", "NotAllowedError")),
-            read: () => Promise.reject(new DOMException("Clipboard access disabled in this viewer.", "NotAllowedError")),
-            write: () => Promise.reject(new DOMException("Clipboard access disabled in this viewer.", "NotAllowedError"))
-          });
-        }
-      });
-    } catch (_) {}
-  </script>
   <script src="./novnc-bundle.js"></script>
   <script>
     const RFB = window.NoVNC?.default || window.NoVNC?.RFB;
@@ -133,6 +115,17 @@
         document.body.classList.remove("connected");
       } finally {
         button.disabled = false;
+      }
+    });
+
+    document.querySelector("#clipboard").addEventListener("click", async () => {
+      // Trigger the permission request only from an explicit user gesture.
+      // Once granted by the browser, noVNC can read/write clipboard normally.
+      try {
+        await navigator.clipboard.readText();
+        status.textContent = "Clipboard access enabled.";
+      } catch (error) {
+        status.textContent = "Clipboard access was not granted. Use the browser's site permissions to allow clipboard access, then try again.";
       }
     });
 
