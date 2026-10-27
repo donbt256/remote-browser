@@ -144,7 +144,8 @@
 
     async function findLatestRun() {
       const data = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");
-      const run = data.workflow_runs?.[0];
+      const runs = data.workflow_runs || [];
+      const run = runs.find(item => item.status !== "completed") || runs[0];
       if (run) showRun(run);
       else actionStatus.textContent = "No workflow_dispatch runs found.";
       return run || null;
@@ -161,7 +162,14 @@
 
     startActionButton.addEventListener("click", () => withActionBusy(startActionButton, "Starting GitHub Actions workflow…", async () => {
       const before = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");
-      const previousRunIds = new Set((before.workflow_runs || []).map(item => item.id));
+      const previousRuns = before.workflow_runs || [];
+      const existingActiveRun = previousRuns.find(item => item.status !== "completed");
+      if (existingActiveRun) {
+        showRun(existingActiveRun);
+        actionStatus.textContent = "A browser workflow is already queued or running. Use its run link, or stop it before starting another.";
+        return;
+      }
+      const previousRunIds = new Set(previousRuns.map(item => item.id));
       await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/dispatches", {
         method: "POST", body: JSON.stringify({ ref: "main" })
       });
