@@ -56,7 +56,21 @@
     const passwordInput = document.querySelector("#password");
     const status = document.querySelector("#status");
     const screen = document.querySelector("#screen");
+    const SERVER_STORAGE_KEY = "remote-browser.server-url";
     let rfb = null;
+
+    // Remember the last remote URL on this device; never persist the password.
+    try {
+      serverInput.value = localStorage.getItem(SERVER_STORAGE_KEY) || "";
+    } catch (_) {}
+
+    serverInput.addEventListener("change", () => {
+      try {
+        const value = serverInput.value.trim();
+        if (value) localStorage.setItem(SERVER_STORAGE_KEY, value);
+        else localStorage.removeItem(SERVER_STORAGE_KEY);
+      } catch (_) {}
+    });
 
     function normalizedBase(value) {
       const base = new URL(value.trim());
@@ -72,7 +86,11 @@
       button.disabled = true;
       status.textContent = "Authenticating…";
       try {
-        const base = normalizedBase(serverInput.value);
+        const enteredUrl = serverInput.value.trim();
+        if (enteredUrl) {
+          try { localStorage.setItem(SERVER_STORAGE_KEY, enteredUrl); } catch (_) {}
+        }
+        const base = normalizedBase(enteredUrl);
         if (base.protocol !== "https:" && base.hostname !== "localhost" && base.hostname !== "127.0.0.1") {
           throw new Error("Use the HTTPS URL shown in the GitHub Actions summary.");
         }
