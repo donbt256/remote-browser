@@ -91,7 +91,7 @@
 
     // Remember the last remote URL on this device; never persist the password.
     try {
-      serverInput.value = localStorage.getItem(SERVER_STORAGE_KEY) || "";
+      serverInput.value = localStorage.getItem(SERVER_STORAGE_KEY) || "https://fence-dazzling-bagpipe.ngrok-free.dev/";
     } catch (_) {}
 
     serverInput.addEventListener("change", () => {
