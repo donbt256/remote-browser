@@ -80,9 +80,7 @@ jobs:
           # The previous container may have been terminated before Chrome
           # removed its singleton files. No Chrome process is running yet,
           # so remove stale profile locks before launching the new container.
-          find "$CONFIG_DIR" \\
-            \( -name SingletonLock -o -name SingletonCookie -o -name SingletonSocket \) \\
-            -print -delete
+          find "$CONFIG_DIR" \( -name SingletonLock -o -name SingletonCookie -o -name SingletonSocket \) -print -delete
 
       - name: Build and start noVNC desktop
         run: |
@@ -483,9 +481,7 @@ jobs:
           # The container is stopped, so no Chrome process can still own
           # these locks. Exclude them from the profile that gets encrypted.
           if [ -d "$CONFIG_DIR" ]; then
-            find "$CONFIG_DIR" \\
-              \( -name SingletonLock -o -name SingletonCookie -o -name SingletonSocket \) \\
-              -print -delete
+            find "$CONFIG_DIR" \( -name SingletonLock -o -name SingletonCookie -o -name SingletonSocket \) -print -delete
           fi
 
           if [ ! -d "$CONFIG_DIR" ] ||
