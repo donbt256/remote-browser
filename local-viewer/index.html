@@ -139,8 +139,7 @@
       runLink.textContent = "Open GitHub Actions run #" + run.run_number;
       runLink.hidden = false;
       const state = run.status === "completed" ? "Completed: " + run.conclusion : "Status: " + run.status;
-      actionStatus.textContent = state + "\
-" + run.name + " (run #" + run.run_number + ").";
+      actionStatus.textContent = state + "\n" + run.name + " (run #" + run.run_number + ").";
     }
 
     async function findLatestRun() {
@@ -161,7 +160,8 @@
     }
 
     startActionButton.addEventListener("click", () => withActionBusy(startActionButton, "Starting GitHub Actions workflow…", async () => {
-      const requestedAt = Date.now();
+      const before = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");
+      const previousRunIds = new Set((before.workflow_runs || []).map(item => item.id));
       await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/dispatches", {
         method: "POST", body: JSON.stringify({ ref: "main" })
       });
@@ -169,7 +169,7 @@
       for (let attempt = 0; attempt < 12; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 2000));
         const data = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");
-        const run = (data.workflow_runs || []).find(item => new Date(item.created_at).getTime() >= requestedAt - 10000);
+        const run = (data.workflow_runs || []).find(item => !previousRunIds.has(item.id));
         if (run) { showRun(run); actionStatus.textContent = "Workflow started. Open the run to view progress and copy the HTTPS browser URL from its Summary when available."; return; }
       }
       actionStatus.textContent = "The dispatch request was sent, but the run has not appeared yet. Use Check status in a moment.";
@@ -177,8 +177,7 @@
 
     checkActionButton.addEventListener("click", () => withActionBusy(checkActionButton, "Checking GitHub Actions…", async () => {
       await findLatestRun();
-      if (activeRun && activeRun.status !== "completed") actionStatus.textContent += "\
-The browser URL appears in the run Summary after the tunnel starts.";
+      if (activeRun && activeRun.status !== "completed") actionStatus.textContent += "\nThe browser URL appears in the run Summary after the tunnel starts.";
     }));
 
     stopActionButton.addEventListener("click", () => withActionBusy(stopActionButton, "Finding the running browser workflow…", async () => {
