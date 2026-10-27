@@ -65,6 +65,7 @@
   <nav id="toolbar" aria-label="Viewer controls">
     <button id="clipboard" type="button">Enable clipboard</button>
     <button id="fullscreen" type="button">Fullscreen</button>
+    <button id="stop-workflow-toolbar" type="button">Stop browser</button>
     <button id="disconnect" type="button">Disconnect</button>
   </nav>
   <script src="./novnc-bundle.js"></script>
@@ -152,7 +153,7 @@
     }
 
     async function withActionBusy(button, label, callback) {
-      const buttons = [startActionButton, checkActionButton, stopActionButton];
+      const buttons = [startActionButton, checkActionButton, stopActionButton, document.querySelector("#stop-workflow-toolbar")];
       buttons.forEach(item => item.disabled = true);
       actionStatus.textContent = label;
       try { await callback(); }
@@ -271,6 +272,8 @@
         status.textContent = "Clipboard access was not granted. Use the browser's site permissions to allow clipboard access, then try again.";
       }
     });
+
+    document.querySelector("#stop-workflow-toolbar").addEventListener("click", () => stopActionButton.click());
 
     document.querySelector("#disconnect").addEventListener("click", () => {
       if (rfb) rfb.disconnect();
