@@ -1,0 +1,59 @@
+name: Build Local noVNC Viewer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "local-viewer/**"
+      - ".github/workflows/build-local-viewer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download noVNC and build standalone client
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/novnc/noVNC.git "$RUNNER_TEMP/noVNC"
+          mkdir -p "$RUNNER_TEMP/package"
+          npm install --prefix "$RUNNER_TEMP/build-tools" esbuild
+          "$RUNNER_TEMP/build-tools/node_modules/.bin/esbuild" \
+            "$RUNNER_TEMP/noVNC/core/rfb.js" \
+            --bundle \
+            --platform=browser \
+            --format=iife \
+            --global-name=NoVNC \
+            --target=es2020 \
+            --outfile="$RUNNER_TEMP/package/novnc-bundle.js"
+          cp local-viewer/index.html "$RUNNER_TEMP/package/index.html"
+          cp "$RUNNER_TEMP/noVNC/LICENSE.txt" "$RUNNER_TEMP/package/noVNC-LICENSE.txt"
+          cat > "$RUNNER_TEMP/package/README.txt" <<'EOF'
+          LOCAL noVNC VIEWER
+
+          1. Extract all files from this ZIP into one folder.
+          2. Open index.html in a modern browser.
+          3. Start the "Remote Chromium Browser" GitHub Actions workflow.
+          4. Copy its HTTPS URL from the workflow summary.
+          5. Enter that URL and your BROWSER_PASSWORD secret in the local page.
+
+          The viewer JavaScript is bundled locally. No iframe is used. Only the
+          remote desktop connection goes to the Actions runner.
+
+          Keep the GitHub Actions workflow running while connected.
+          EOF
+          cd "$RUNNER_TEMP/package"
+          zip -9 "$GITHUB_WORKSPACE/local-viewer-package.zip" index.html novnc-bundle.js noVNC-LICENSE.txt README.txt
+
+      - name: Upload local viewer package
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-novnc-viewer
+          path: local-viewer-package.zip
+          if-no-files-found: error
+          retention-days: 30
