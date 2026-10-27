@@ -102,7 +102,7 @@ jobs:
           docker logs chromium
           exit 1
 
-      - name: Start iframe authentication proxy
+      - name: Start password and WebSocket-ticket proxy
         env:
           BROWSER_PASSWORD: ${{ secrets.BROWSER_PASSWORD }}
         run: |
@@ -113,13 +113,13 @@ jobs:
             exit 1
           fi
 
-          npm install --prefix "$RUNNER_TEMP/iframe-proxy" http-proxy
+          npm install --prefix "$RUNNER_TEMP/browser-proxy" http-proxy
 
-          cat > "$RUNNER_TEMP/iframe-proxy.js" <<'JAVASCRIPT'
+          cat > "$RUNNER_TEMP/browser-proxy.js" <<'JAVASCRIPT'
           const http = require('http');
           const crypto = require('crypto');
           const httpProxy = require(
-            process.env.RUNNER_TEMP + '/iframe-proxy/node_modules/http-proxy'
+            process.env.RUNNER_TEMP + '/browser-proxy/node_modules/http-proxy'
           );
 
           const password = process.env.BROWSER_PASSWORD;
@@ -137,6 +137,28 @@ jobs:
             return crypto.createHmac('sha256', password)
               .update(expiry)
               .digest('hex');
+          }
+
+          function ticketSignature(expiry) {
+            return crypto.createHmac('sha256', password)
+              .update('websocket:' + expiry)
+              .digest('hex');
+          }
+
+          function validTicket(value) {
+            const i = value.indexOf('.');
+            if (i < 0) return false;
+            const expiry = value.slice(0, i);
+            const supplied = value.slice(i + 1);
+            if (!/^\\d+$/.test(expiry) ||
+                Number(expiry) <= Math.floor(Date.now() / 1000) ||
+                Number(expiry) > Math.floor(Date.now() / 1000) + 125 ||
+                !/^[a-f0-9]{64}$/.test(supplied)) return false;
+            const expected = ticketSignature(expiry);
+            return crypto.timingSafeEqual(
+              Buffer.from(supplied, 'hex'),
+              Buffer.from(expected, 'hex')
+            );
           }
 
           function validSession(req) {
@@ -253,6 +275,33 @@ jobs:
               return;
             }
 
+            if (url.pathname === '/api/session' && req.method === 'POST') {
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.setHeader('Cache-Control', 'no-store');
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              let body = '';
+              req.on('data', chunk => {
+                body += chunk;
+                if (body.length > 8192) req.destroy();
+              });
+              req.on('end', () => {
+                const form = new URLSearchParams(body);
+                const submitted = form.get('password') || '';
+                const a = Buffer.from(submitted);
+                const b = Buffer.from(password);
+                const matches = a.length === b.length && crypto.timingSafeEqual(a, b);
+                if (!matches) {
+                  res.writeHead(401);
+                  return res.end(JSON.stringify({ error: 'Incorrect password.' }));
+                }
+                const expiry = String(Math.floor(Date.now() / 1000) + 120);
+                const ticket = expiry + '.' + ticketSignature(expiry);
+                res.writeHead(200);
+                res.end(JSON.stringify({ ticket, expires_in: 120 }));
+              });
+              return;
+            }
+
             if (!validSession(req)) {
               res.writeHead(303, {
                 'Cache-Control': 'no-store',
@@ -273,7 +322,9 @@ jobs:
           });
 
           server.on('upgrade', (req, socket, head) => {
-            if (!validSession(req)) {
+            const url = new URL(req.url, 'http://localhost');
+            const ticket = url.searchParams.get('ticket') || '';
+            if (!validTicket(ticket)) {
               socket.end(
                 'HTTP/1.1 401 Unauthorized\\r\\n' +
                 'Connection: close\\r\\n\\r\\n'
@@ -322,26 +373,26 @@ jobs:
           });
 
           server.listen(8080, '127.0.0.1', () => {
-            console.log('Iframe authentication proxy listening on port 8080.');
+            console.log('Password and WebSocket-ticket proxy listening on port 8080.');
           });
           JAVASCRIPT
 
           RUNNER_TEMP="$RUNNER_TEMP" \
             BROWSER_PASSWORD="$BROWSER_PASSWORD" \
-            node "$RUNNER_TEMP/iframe-proxy.js" \
-            > "$RUNNER_TEMP/iframe-proxy.log" 2>&1 &
+            node "$RUNNER_TEMP/browser-proxy.js" \
+            > "$RUNNER_TEMP/browser-proxy.log" 2>&1 &
 
-          echo $! > "$RUNNER_TEMP/iframe-proxy.pid"
+          echo $! > "$RUNNER_TEMP/browser-proxy.pid"
 
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/login -o /dev/null; then
-              echo "Iframe authentication proxy is ready."
+              echo "Password and WebSocket-ticket proxy is ready."
               exit 0
             fi
             sleep 2
           done
 
-          cat "$RUNNER_TEMP/iframe-proxy.log"
+          cat "$RUNNER_TEMP/browser-proxy.log"
           exit 1
 
       - name: Start secure tunnel
@@ -366,7 +417,7 @@ jobs:
                 echo
                 echo "URL: $URL"
                 echo
-                echo "Open this URL in your local HTML iframe."
+                echo "Open this URL in the local noVNC viewer."
                 echo "Sign in using your BROWSER_PASSWORD secret."
               } >> "$GITHUB_STEP_SUMMARY"
 
@@ -400,9 +451,9 @@ jobs:
               exit 1
             fi
 
-            if ! kill -0 "$(cat "$RUNNER_TEMP/iframe-proxy.pid")" 2>/dev/null; then
-              echo "Iframe authentication proxy stopped unexpectedly."
-              cat "$RUNNER_TEMP/iframe-proxy.log"
+            if ! kill -0 "$(cat "$RUNNER_TEMP/browser-proxy.pid")" 2>/dev/null; then
+              echo "Password and WebSocket-ticket proxy stopped unexpectedly."
+              cat "$RUNNER_TEMP/browser-proxy.log"
               exit 1
             fi
 
@@ -468,8 +519,8 @@ jobs:
         run: |
           docker rm -f chromium 2>/dev/null || true
 
-          if [ -f "$RUNNER_TEMP/iframe-proxy.pid" ]; then
-            kill "$(cat "$RUNNER_TEMP/iframe-proxy.pid")" 2>/dev/null || true
+          if [ -f "$RUNNER_TEMP/browser-proxy.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/browser-proxy.pid")" 2>/dev/null || true
           fi
 
           if [ -f "$RUNNER_TEMP/ngrok.pid" ]; then
