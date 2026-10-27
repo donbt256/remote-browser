@@ -33,20 +33,29 @@ WEBSOCKIFY_PID=$!
 mkdir -p /config/Chromium
 chown -R browser:browser /config
 sleep 2
-su - browser -c 'DISPLAY=:1 google-chrome --no-sandbox --disable-dev-shm-usage --user-data-dir=/config/Chromium --no-first-run --no-default-browser-check --start-maximized' \
-  >> /tmp/chrome-startup.log 2>&1 &
-CHROME_PID=$!
 
-# Detect an immediate Chrome startup failure instead of silently showing a
-# desktop with no browser window.
-sleep 5
-if ! kill -0 "$CHROME_PID" 2>/dev/null; then
-  echo "Chrome startup process exited. Startup output follows:"
-  cat /tmp/chrome-startup.log || true
-fi
+# Keep Chrome running for the lifetime of the desktop. Closing the Chrome
+# window exits the browser process; restart it automatically after a short pause.
+su - browser -c '
+  while true; do
+    echo "Starting Chrome..." >> /tmp/chrome-startup.log
+    DISPLAY=:1 google-chrome \
+      --no-sandbox \
+      --disable-dev-shm-usage \
+      --user-data-dir=/config/Chromium \
+      --no-first-run \
+      --no-default-browser-check \
+      --start-maximized \
+      >> /tmp/chrome-startup.log 2>&1
+    status=$?
+    echo "Chrome exited with status $status; restarting in 3 seconds." >> /tmp/chrome-startup.log
+    sleep 3
+  done
+' &
+CHROME_SUPERVISOR_PID=$!
 
 cleanup() {
-  kill "$CHROME_PID" "$WEBSOCKIFY_PID" 2>/dev/null || true
+  kill "$CHROME_SUPERVISOR_PID" "$WEBSOCKIFY_PID" 2>/dev/null || true
   su - browser -c 'vncserver -kill :1' >/dev/null 2>&1 || true
 }
 trap cleanup EXIT TERM INT
