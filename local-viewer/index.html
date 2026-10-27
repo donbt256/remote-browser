@@ -74,7 +74,8 @@
     if (!RFB) throw new Error("The local noVNC bundle is missing. Download the Local noVNC Viewer artifact from GitHub Actions.");
 
     const form = document.querySelector("#connect-form");
-    const githubTokenInput = document.querySelector("#github-token");
+    // Set this only in your local copy. Never replace the placeholder in the public repository.
+    const GITHUB_TOKEN = "PASTE_YOUR_FINE_GRAINED_TOKEN_HERE";
     const actionStatus = document.querySelector("#action-status");
     const runLink = document.querySelector("#run-link");
     const startActionButton = document.querySelector("#start-action");
@@ -105,8 +106,10 @@
     });
 
     function getGitHubToken() {
-      const token = githubTokenInput.value.trim();
-      if (!token) throw new Error("Enter your GitHub token first.");
+      const token = GITHUB_TOKEN.trim();
+      if (!token || token === "PASTE_YOUR_FINE_GRAINED_TOKEN_HERE") {
+        throw new Error("Edit this local HTML file and set GITHUB_TOKEN before using the GitHub controls.");
+      }
       return token;
     }
 
