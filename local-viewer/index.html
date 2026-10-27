@@ -15,7 +15,11 @@
     label { display: grid; gap: 6px; }
     input { width: 100%; padding: 11px; border: 1px solid #555; border-radius: 5px; background: #202020; color: #fff; font: inherit; }
     button { padding: 11px 14px; border: 0; border-radius: 5px; background: #e5e5e5; color: #111; font: inherit; cursor: pointer; }
-    #status { min-height: 1.4em; color: #bbb; overflow-wrap: anywhere; white-space: pre-wrap; }\n    #actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }\n    #actions button { padding: 10px 6px; }\n    #run-link { color: #9dcaff; overflow-wrap: anywhere; }\n    .hint { color: #aaa; font-size: .9rem; }
+    #status { min-height: 1.4em; color: #bbb; overflow-wrap: anywhere; white-space: pre-wrap; }
+    #actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    #actions button { padding: 10px 6px; }
+    #run-link { color: #9dcaff; overflow-wrap: anywhere; }
+    .hint { color: #aaa; font-size: .9rem; }
     #screen { display: none; position: fixed; inset: 0; width: 100%; height: 100%; }
     body.connected { display: block; }
     body.connected #setup { display: none; }
@@ -28,7 +32,24 @@
 <body>
   <main id="setup">
     <h1>Local noVNC Viewer</h1>
-    <p>The viewer files run locally. Only the remote desktop connection leaves this device.</p>
+    <p>The viewer files run locally. Use the controls below to start, check, or stop the GitHub Actions browser session.</p>
+    <section aria-label="GitHub Actions controls">
+      <form id="actions-form">
+        <label>GitHub fine-grained personal access token
+          <input id="github-token" type="password" autocomplete="off" placeholder="Token with Actions read/write access">
+        </label>
+        <p class="hint">Token is kept in memory only and is not saved by this page. Restrict it to donbt256/remote-browser and grant Actions: Read and write.</p>
+        <div id="actions">
+          <button id="start-action" type="button">Start browser</button>
+          <button id="check-action" type="button">Check status</button>
+          <button id="stop-action" type="button">Stop browser</button>
+        </div>
+      </form>
+      <p id="action-status" role="status"></p>
+      <p><a id="run-link" hidden target="_blank" rel="noopener noreferrer">Open GitHub Actions run</a></p>
+    </section>
+    <hr>
+    <h2>Connect to a running browser</h2>
     <form id="connect-form">
       <label>Remote browser URL
         <input id="server" type="url" placeholder="https://your-ngrok-host.ngrok-free.app" required autocomplete="url">
@@ -51,7 +72,17 @@
     const RFB = window.NoVNC?.default || window.NoVNC?.RFB;
     if (!RFB) throw new Error("The local noVNC bundle is missing. Download the Local noVNC Viewer artifact from GitHub Actions.");
 
-    const form = document.querySelector("#connect-form");\n    const githubTokenInput = document.querySelector("#github-token");\n    const actionStatus = document.querySelector("#action-status");\n    const runLink = document.querySelector("#run-link");\n    const startActionButton = document.querySelector("#start-action");\n    const checkActionButton = document.querySelector("#check-action");\n    const stopActionButton = document.querySelector("#stop-action");\n    const GITHUB_API = "https://api.github.com";\n    const REPOSITORY = "donbt256/remote-browser";\n    const WORKFLOW = "remote-browser.yml";\n    let activeRun = null;
+    const form = document.querySelector("#connect-form");
+    const githubTokenInput = document.querySelector("#github-token");
+    const actionStatus = document.querySelector("#action-status");
+    const runLink = document.querySelector("#run-link");
+    const startActionButton = document.querySelector("#start-action");
+    const checkActionButton = document.querySelector("#check-action");
+    const stopActionButton = document.querySelector("#stop-action");
+    const GITHUB_API = "https://api.github.com";
+    const REPOSITORY = "donbt256/remote-browser";
+    const WORKFLOW = "remote-browser.yml";
+    let activeRun = null;
     const serverInput = document.querySelector("#server");
     const passwordInput = document.querySelector("#password");
     const status = document.querySelector("#status");
@@ -72,7 +103,94 @@
       } catch (_) {}
     });
 
-    function getGitHubToken() {\n      const token = githubTokenInput.value.trim();\n      if (!token) throw new Error("Enter your GitHub token first.");\n      return token;\n    }\n\n    async function githubRequest(path, options = {}) {\n      const response = await fetch(GITHUB_API + path, {\n        ...options,\n        headers: {\n          "Accept": "application/vnd.github+json",\n          "Authorization": "Bearer " + getGitHubToken(),\n          "X-GitHub-Api-Version": "2022-11-28",\n          ...(options.body ? { "Content-Type": "application/json" } : {}),\n          ...(options.headers || {})\n        }\n      });\n      if (!response.ok && response.status !== 204) {\n        let detail = "";\n        try { detail = (await response.json()).message || ""; } catch (_) {}\n        if (response.status === 401) throw new Error("GitHub rejected the token. Check that it is valid.");\n        if (response.status === 403) throw new Error("GitHub denied this request. The token needs Actions: Read and write access to donbt256/remote-browser.");\n        if (response.status === 404) throw new Error("GitHub could not find the workflow or run. Check repository access and the workflow filename.");\n        throw new Error("GitHub API error (HTTP " + response.status + "). " + detail);\n      }\n      if (response.status === 204) return null;\n      return response.json();\n    }\n\n    function showRun(run) {\n      if (!run) return;\n      activeRun = run;\n      runLink.href = run.html_url;\n      runLink.textContent = "Open GitHub Actions run #" + run.run_number;\n      runLink.hidden = false;\n      const state = run.status === "completed" ? "Completed: " + run.conclusion : "Status: " + run.status;\n      actionStatus.textContent = state + "\\n" + run.name + " (run #" + run.run_number + ").";\n    }\n\n    async function findLatestRun() {\n      const data = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");\n      const run = data.workflow_runs?.[0];\n      if (run) showRun(run);\n      else actionStatus.textContent = "No workflow_dispatch runs found.";\n      return run || null;\n    }\n\n    async function withActionBusy(button, label, callback) {\n      const buttons = [startActionButton, checkActionButton, stopActionButton];\n      buttons.forEach(item => item.disabled = true);\n      actionStatus.textContent = label;\n      try { await callback(); }\n      catch (error) { actionStatus.textContent = error.message || String(error); }\n      finally { buttons.forEach(item => item.disabled = false); }\n    }\n\n    startActionButton.addEventListener("click", () => withActionBusy(startActionButton, "Starting GitHub Actions workflow…", async () => {\n      const requestedAt = Date.now();\n      await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/dispatches", {\n        method: "POST", body: JSON.stringify({ ref: "main" })\n      });\n      actionStatus.textContent = "Start request accepted. Waiting for GitHub to create the run…";\n      for (let attempt = 0; attempt < 12; attempt++) {\n        await new Promise(resolve => setTimeout(resolve, 2000));\n        const data = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");\n        const run = (data.workflow_runs || []).find(item => new Date(item.created_at).getTime() >= requestedAt - 10000);\n        if (run) { showRun(run); actionStatus.textContent = "Workflow started. Open the run to view progress and copy the HTTPS browser URL from its Summary when available."; return; }\n      }\n      actionStatus.textContent = "The dispatch request was sent, but the run has not appeared yet. Use Check status in a moment.";\n    }));\n\n    checkActionButton.addEventListener("click", () => withActionBusy(checkActionButton, "Checking GitHub Actions…", async () => {\n      await findLatestRun();\n      if (activeRun && activeRun.status !== "completed") actionStatus.textContent += "\\nThe browser URL appears in the run Summary after the tunnel starts.";\n    }));\n\n    stopActionButton.addEventListener("click", () => withActionBusy(stopActionButton, "Finding the running browser workflow…", async () => {\n      const run = await findLatestRun();\n      if (!run) return;\n      if (run.status === "completed") { actionStatus.textContent = "This workflow run has already completed."; return; }\n      if (!confirm("Cancel browser workflow run #" + run.run_number + "? The workflow will attempt to save the encrypted browser profile before cleanup.")) return;\n      await githubRequest("/repos/" + REPOSITORY + "/actions/runs/" + run.id + "/cancel", { method: "POST" });\n      actionStatus.textContent = "Cancellation requested for run #" + run.run_number + ". GitHub Actions will attempt the profile-save step, but saving is not guaranteed if the runner is terminated.";\n    }));\n\n    function normalizedBase(value) {
+    function getGitHubToken() {
+      const token = githubTokenInput.value.trim();
+      if (!token) throw new Error("Enter your GitHub token first.");
+      return token;
+    }
+
+    async function githubRequest(path, options = {}) {
+      const response = await fetch(GITHUB_API + path, {
+        ...options,
+        headers: {
+          "Accept": "application/vnd.github+json",
+          "Authorization": "Bearer " + getGitHubToken(),
+          "X-GitHub-Api-Version": "2022-11-28",
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...(options.headers || {})
+        }
+      });
+      if (!response.ok && response.status !== 204) {
+        let detail = "";
+        try { detail = (await response.json()).message || ""; } catch (_) {}
+        if (response.status === 401) throw new Error("GitHub rejected the token. Check that it is valid.");
+        if (response.status === 403) throw new Error("GitHub denied this request. The token needs Actions: Read and write access to donbt256/remote-browser.");
+        if (response.status === 404) throw new Error("GitHub could not find the workflow or run. Check repository access and the workflow filename.");
+        throw new Error("GitHub API error (HTTP " + response.status + "). " + detail);
+      }
+      if (response.status === 204) return null;
+      return response.json();
+    }
+
+    function showRun(run) {
+      if (!run) return;
+      activeRun = run;
+      runLink.href = run.html_url;
+      runLink.textContent = "Open GitHub Actions run #" + run.run_number;
+      runLink.hidden = false;
+      const state = run.status === "completed" ? "Completed: " + run.conclusion : "Status: " + run.status;
+      actionStatus.textContent = state + "\
+" + run.name + " (run #" + run.run_number + ").";
+    }
+
+    async function findLatestRun() {
+      const data = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");
+      const run = data.workflow_runs?.[0];
+      if (run) showRun(run);
+      else actionStatus.textContent = "No workflow_dispatch runs found.";
+      return run || null;
+    }
+
+    async function withActionBusy(button, label, callback) {
+      const buttons = [startActionButton, checkActionButton, stopActionButton];
+      buttons.forEach(item => item.disabled = true);
+      actionStatus.textContent = label;
+      try { await callback(); }
+      catch (error) { actionStatus.textContent = error.message || String(error); }
+      finally { buttons.forEach(item => item.disabled = false); }
+    }
+
+    startActionButton.addEventListener("click", () => withActionBusy(startActionButton, "Starting GitHub Actions workflow…", async () => {
+      const requestedAt = Date.now();
+      await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/dispatches", {
+        method: "POST", body: JSON.stringify({ ref: "main" })
+      });
+      actionStatus.textContent = "Start request accepted. Waiting for GitHub to create the run…";
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const data = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");
+        const run = (data.workflow_runs || []).find(item => new Date(item.created_at).getTime() >= requestedAt - 10000);
+        if (run) { showRun(run); actionStatus.textContent = "Workflow started. Open the run to view progress and copy the HTTPS browser URL from its Summary when available."; return; }
+      }
+      actionStatus.textContent = "The dispatch request was sent, but the run has not appeared yet. Use Check status in a moment.";
+    }));
+
+    checkActionButton.addEventListener("click", () => withActionBusy(checkActionButton, "Checking GitHub Actions…", async () => {
+      await findLatestRun();
+      if (activeRun && activeRun.status !== "completed") actionStatus.textContent += "\
+The browser URL appears in the run Summary after the tunnel starts.";
+    }));
+
+    stopActionButton.addEventListener("click", () => withActionBusy(stopActionButton, "Finding the running browser workflow…", async () => {
+      const run = await findLatestRun();
+      if (!run) return;
+      if (run.status === "completed") { actionStatus.textContent = "This workflow run has already completed."; return; }
+      if (!confirm("Cancel browser workflow run #" + run.run_number + "? The workflow will attempt to save the encrypted browser profile before cleanup.")) return;
+      await githubRequest("/repos/" + REPOSITORY + "/actions/runs/" + run.id + "/cancel", { method: "POST" });
+      actionStatus.textContent = "Cancellation requested for run #" + run.run_number + ". GitHub Actions will attempt the profile-save step, but saving is not guaranteed if the runner is terminated.";
+    }));
+
+    function normalizedBase(value) {
       const base = new URL(value.trim());
       if (!["https:", "http:"].includes(base.protocol)) throw new Error("Use an http:// or https:// URL.");
       if (base.username || base.password) throw new Error("Do not put credentials in the URL.");
