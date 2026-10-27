@@ -35,10 +35,7 @@
     <p>The viewer files run locally. Use the controls below to start, check, or stop the GitHub Actions browser session.</p>
     <section aria-label="GitHub Actions controls">
       <form id="actions-form">
-        <label>GitHub fine-grained personal access token
-          <input id="github-token" type="password" autocomplete="off" placeholder="Token with Actions read/write access">
-        </label>
-        <p class="hint">Token is kept in memory only and is not saved by this page. Restrict it to donbt256/remote-browser and grant Actions: Read and write.</p>
+        <p class="hint">Before using this local copy, paste your fine-grained token into the GITHUB_TOKEN constant in this file. Restrict it to donbt256/remote-browser and grant Actions: Read and write. Never commit your real token to GitHub.</p>
         <div id="actions">
           <button id="start-action" type="button">Start browser</button>
           <button id="check-action" type="button">Check status</button>
