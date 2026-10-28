@@ -61,6 +61,20 @@ jobs:
             fi
           fi
 
+          # Migrate older installations that saved the archive as a Git file.
+          # Only use this fallback when the release asset is not available.
+          if [ ! -f "$PROFILE_ARCHIVE" ]; then
+            LEGACY_REPO_DIR="$RUNNER_TEMP/profile-repo"
+            if git clone --depth 1 \
+              "https://x-access-token:${STORAGE_TOKEN}@github.com/${PROFILE_REPO}.git" \
+              "$LEGACY_REPO_DIR"; then
+              if [ -f "$LEGACY_REPO_DIR/profile.tar.gz.gpg" ]; then
+                cp "$LEGACY_REPO_DIR/profile.tar.gz.gpg" "$PROFILE_ARCHIVE"
+                echo "Found legacy Git-stored profile; it will migrate to a release asset on save."
+              fi
+            fi
+          fi
+
           if [ -f "$PROFILE_ARCHIVE" ]; then
             gpg --batch --yes \
               --pinentry-mode loopback \
