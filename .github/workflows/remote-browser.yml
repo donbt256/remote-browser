@@ -416,7 +416,7 @@ jobs:
               {
                 echo "## Remote Chromium (noVNC)"
                 echo
-                echo "URL: https://browser.claired.net/"
+                echo "URL: https://browser.dnly.org/"
                 echo
                 echo "Open this URL in the local noVNC viewer."
                 echo "Sign in using your BROWSER_PASSWORD secret."
@@ -424,7 +424,7 @@ jobs:
                 echo "Tunnel provider: Cloudflare Tunnel"
               } >> "$GITHUB_STEP_SUMMARY"
 
-              echo "Cloudflare Tunnel connected: https://browser.claired.net/"
+              echo "Cloudflare Tunnel connected: https://browser.dnly.org/"
               exit 0
             fi
 
