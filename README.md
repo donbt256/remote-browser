@@ -4,11 +4,11 @@ A GitHub Actions-hosted Chromium desktop with a locally bundled noVNC viewer, pa
 
 ## Cloudflare Tunnel setup
 
-The workflow uses a named Cloudflare Tunnel and the stable hostname `https://browser.claired.net/`. The tunnel must be configured in Cloudflare before starting the workflow.
+The workflow uses a named Cloudflare Tunnel and the stable hostname `https://browser.dnly.org/`. The tunnel must be configured in Cloudflare before starting the workflow.
 
 1. In the Cloudflare dashboard, open **Networking → Tunnels** and create a named tunnel, for example `remote-browser-github-actions`.
 2. Open the tunnel's **Public Hostnames / Routes** configuration and add:
-   - Hostname: `browser.claired.net`
+   - Hostname: `browser.dnly.org`
    - Service type: `HTTP`
    - Service URL: `http://localhost:8080`
 3. Copy the tunnel token from Cloudflare. Do not commit it or paste it into source files.
@@ -19,7 +19,7 @@ The workflow uses a named Cloudflare Tunnel and the stable hostname `https://bro
    - `BROWSER_PASSWORD` — at least 16 characters
    - `PROFILE_STORAGE_TOKEN` — token that can read and write the private profile-storage repository
    - `PROFILE_ENCRYPTION_KEY` — encryption passphrase used for the profile archive
-6. Run **Actions → Remote Chromium Browser → Run workflow**. The run Summary should show `https://browser.claired.net/` after Cloudflare reports a registered tunnel connection.
+6. Run **Actions → Remote Chromium Browser → Run workflow**. The run Summary should show `https://browser.dnly.org/` after Cloudflare reports a registered tunnel connection.
 7. Download the latest `local-novnc-viewer` artifact from the **Build Local noVNC Viewer** workflow and extract it. Continue using the local `index.html`; the GitHub token stays only in your local copy.
 
 Cloudflare Tunnel supports WebSockets, required by noVNC. The tunnel token belongs in GitHub Actions secrets only. Never put it in the public repository or local viewer.
