@@ -26,6 +26,6 @@ Cloudflare Tunnel supports WebSockets, required by noVNC. The tunnel token belon
 
 ## Persistent profile
 
-The workflow decrypts `profile.tar.gz.gpg` from the private `donbt256/browser-profile-storage` repository before starting Chromium. On workflow cleanup, it stops Chromium, removes stale singleton lock files, encrypts the profile with AES-256, and pushes the updated encrypted archive back to that private repository.
+The workflow downloads `profile.tar.gz.gpg` as a GitHub Release asset named `browser-profile` in the private `donbt256/browser-profile-storage` repository before starting Chromium. On workflow cleanup, it stops Chromium, removes stale singleton lock files, encrypts the profile with AES-256, and replaces that release asset. This avoids GitHub's 100 MiB limit for individual Git files and prevents profile versions from accumulating in Git history. The first save automatically creates the release. For migration, if no release asset exists, the workflow falls back to the older Git-stored `profile.tar.gz.gpg` file and migrates it on save.
 
 Cancel the workflow from the local viewer or GitHub Actions when finished so the cleanup step can attempt to save the profile. Profile saving is not guaranteed if a runner is forcibly terminated.
