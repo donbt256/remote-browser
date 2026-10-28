@@ -49,7 +49,7 @@
     <h2>Connect to a running browser</h2>
     <form id="connect-form">
       <label>Remote browser URL
-        <input id="server" type="url" placeholder="https://your-ngrok-host.ngrok-free.app" required autocomplete="url">
+        <input id="server" type="url" placeholder="https://browser.claired.net" required autocomplete="url">
       </label>
       <label>Browser password
         <input id="password" type="password" required autocomplete="current-password">
@@ -91,7 +91,7 @@
 
     // Remember the last remote URL on this device; never persist the password.
     try {
-      serverInput.value = localStorage.getItem(SERVER_STORAGE_KEY) || "https://fence-dazzling-bagpipe.ngrok-free.dev/";
+      serverInput.value = localStorage.getItem(SERVER_STORAGE_KEY) || "https://browser.claired.net/";
     } catch (_) {}
 
     serverInput.addEventListener("change", () => {
@@ -221,7 +221,7 @@
           throw new Error("Use the HTTPS URL shown in the GitHub Actions summary.");
         }
         base.pathname = "/api/session";
-        base.search = "ngrok-skip-browser-warning=true";
+        base.search = "";
         base.hash = "";
         const response = await fetch(base, {
           method: "POST",
@@ -236,7 +236,7 @@
         const ws = new URL("/websockify", serverInput.value.trim());
         ws.protocol = ws.protocol === "https:" ? "wss:" : "ws:";
         ws.searchParams.set("ticket", data.ticket);
-        ws.searchParams.set("ngrok-skip-browser-warning", "true");
+
 
         screen.replaceChildren();
         document.body.classList.add("connected");
