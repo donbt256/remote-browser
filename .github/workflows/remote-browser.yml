@@ -43,29 +43,38 @@ jobs:
         run: |
           set -euo pipefail
 
-          REPO_DIR="$RUNNER_TEMP/profile-repo"
           CONFIG_DIR="$RUNNER_TEMP/chromium-config"
+          PROFILE_ARCHIVE="$RUNNER_TEMP/profile.tar.gz.gpg"
 
           mkdir -p "$CONFIG_DIR"
+          export GH_TOKEN="$STORAGE_TOKEN"
 
-          git clone \
-            "https://x-access-token:${STORAGE_TOKEN}@github.com/${PROFILE_REPO}.git" \
-            "$REPO_DIR"
+          # The encrypted profile is stored as a release asset rather than a
+          # Git blob, avoiding GitHub's 100 MiB per-file Git limit.
+          if gh release view browser-profile --repo "$PROFILE_REPO" >/dev/null 2>&1; then
+            if gh release view browser-profile --repo "$PROFILE_REPO" \
+              --json assets --jq '.assets[].name' | grep -Fxq 'profile.tar.gz.gpg'; then
+              gh release download browser-profile \
+                --repo "$PROFILE_REPO" \
+                --pattern profile.tar.gz.gpg \
+                --dir "$RUNNER_TEMP"
+            fi
+          fi
 
-          if [ -f "$REPO_DIR/profile.tar.gz.gpg" ]; then
+          if [ -f "$PROFILE_ARCHIVE" ]; then
             gpg --batch --yes \
               --pinentry-mode loopback \
               --passphrase "$PROFILE_KEY" \
               --decrypt \
               --output "$RUNNER_TEMP/profile.tar.gz" \
-              "$REPO_DIR/profile.tar.gz.gpg"
+              "$PROFILE_ARCHIVE"
 
             tar -xzf "$RUNNER_TEMP/profile.tar.gz" \
               -C "$CONFIG_DIR"
 
             echo "Previous browser profile restored."
           else
-            echo "No saved profile yet; starting fresh."
+            echo "No saved profile release asset yet; starting fresh."
           fi
 
           chmod -R u+rwX "$CONFIG_DIR"
@@ -473,7 +482,9 @@ jobs:
           set -euo pipefail
 
           CONFIG_DIR="$RUNNER_TEMP/chromium-config"
-          REPO_DIR="$RUNNER_TEMP/profile-repo"
+          PROFILE_ARCHIVE="$RUNNER_TEMP/profile.tar.gz.gpg"
+
+          export GH_TOKEN="$STORAGE_TOKEN"
 
           docker stop -t 30 chromium 2>/dev/null || true
 
@@ -503,26 +514,23 @@ jobs:
             --passphrase "$PROFILE_KEY" \
             --symmetric \
             --cipher-algo AES256 \
-            --output "$REPO_DIR/profile.tar.gz.gpg" \
+            --output "$PROFILE_ARCHIVE" \
             "$RUNNER_TEMP/profile.tar.gz"
 
-          cd "$REPO_DIR"
-
-          git config user.name "github-actions[bot]"
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add profile.tar.gz.gpg
-
-          if git diff --cached --quiet; then
-            echo "No profile changes to save."
-            exit 0
+          # Create the release on first save, then replace its single asset on
+          # later runs. The archive remains encrypted and outside Git history.
+          if ! gh release view browser-profile --repo "$PROFILE_REPO" >/dev/null 2>&1; then
+            gh release create browser-profile \
+              --repo "$PROFILE_REPO" \
+              --title "Encrypted Chromium profile" \
+              --notes "Latest encrypted Chromium profile. The asset is replaced on each browser session."
           fi
 
-          git commit -m "Save encrypted Chromium profile"
-          git push origin HEAD
+          gh release upload browser-profile "$PROFILE_ARCHIVE" \
+            --repo "$PROFILE_REPO" \
+            --clobber
 
-          echo "Encrypted browser profile saved."
+          echo "Encrypted browser profile saved as a private GitHub Release asset."
 
       - name: Clean up
         if: always()
