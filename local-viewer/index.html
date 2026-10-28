@@ -49,7 +49,7 @@
     <h2>Connect to a running browser</h2>
     <form id="connect-form">
       <label>Remote browser URL
-        <input id="server" type="url" placeholder="https://browser.claired.net" required autocomplete="url">
+        <input id="server" type="url" placeholder="https://browser.dnly.org" required autocomplete="url">
       </label>
       <label>Browser password
         <input id="password" type="password" required autocomplete="current-password">
@@ -95,7 +95,7 @@
       // Migrate saved URLs from the retired ngrok tunnel to the stable hostname.
       serverInput.value = savedServer && !savedServer.includes("ngrok")
         ? savedServer
-        : "https://browser.claired.net/";
+        : "https://browser.dnly.org/";
       if (savedServer.includes("ngrok")) {
         localStorage.setItem(SERVER_STORAGE_KEY, serverInput.value);
       }
