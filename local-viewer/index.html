@@ -91,7 +91,14 @@
 
     // Remember the last remote URL on this device; never persist the password.
     try {
-      serverInput.value = localStorage.getItem(SERVER_STORAGE_KEY) || "https://browser.claired.net/";
+      const savedServer = localStorage.getItem(SERVER_STORAGE_KEY) || "";
+      // Migrate saved URLs from the retired ngrok tunnel to the stable hostname.
+      serverInput.value = savedServer && !savedServer.includes("ngrok")
+        ? savedServer
+        : "https://browser.claired.net/";
+      if (savedServer.includes("ngrok")) {
+        localStorage.setItem(SERVER_STORAGE_KEY, serverInput.value);
+      }
     } catch (_) {}
 
     serverInput.addEventListener("change", () => {
