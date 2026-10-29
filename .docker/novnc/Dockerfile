@@ -29,10 +29,7 @@ RUN useradd --create-home --shell /bin/bash browser \
     && chown -R browser:browser /config /home/browser
 
 COPY start-desktop.sh /usr/local/bin/start-desktop
-COPY install-soulseekqt.sh /usr/local/bin/install-soulseekqt
-COPY soulseekqt.desktop /usr/share/applications/soulseekqt.desktop
-RUN chmod 0755 /usr/local/bin/start-desktop /usr/local/bin/install-soulseekqt \
-    && chmod 0644 /usr/share/applications/soulseekqt.desktop
+RUN chmod 0755 /usr/local/bin/start-desktop
 
 EXPOSE 6080
 ENTRYPOINT ["/usr/local/bin/start-desktop"]
