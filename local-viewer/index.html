@@ -27,6 +27,14 @@
     #toolbar { position: fixed; z-index: 2; top: 8px; right: 8px; display: flex; gap: 8px; opacity: .2; }
     #toolbar:hover { opacity: 1; }
     #toolbar button { padding: 6px 9px; }
+    #settings-button { position: fixed; z-index: 5; right: 12px; bottom: 12px; padding: 9px 13px; opacity: .78; }
+    #settings-button:hover { opacity: 1; }
+    #settings-panel { display: none; position: fixed; z-index: 6; right: 12px; bottom: 58px; width: min(380px, calc(100vw - 24px)); padding: 16px; border: 1px solid #555; border-radius: 8px; background: #202020; box-shadow: 0 8px 28px #0009; }
+    #settings-panel.open { display: block; }
+    #settings-panel h2 { margin-top: 0; font-size: 1.1rem; }
+    #settings-panel .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    #settings-panel .settings-actions button { flex: 1; }
+    #settings-status { min-height: 1.3em; color: #bbb; font-size: .9rem; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
@@ -59,6 +67,19 @@
     <p id="status" role="status"></p>
   </main>
   <div id="screen" aria-label="Remote desktop"></div>
+  <button id="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">Settings</button>
+  <section id="settings-panel" aria-label="Viewer settings" aria-hidden="true">
+    <h2>Viewer settings</h2>
+    <p class="hint">Optional PAT override for GitHub Actions controls. When set, this token takes priority over the encrypted token. It is kept in memory only and cleared when this page reloads.</p>
+    <label for="pat-override">Fine-grained GitHub PAT</label>
+    <input id="pat-override" type="password" autocomplete="off" placeholder="Paste token here">
+    <div class="settings-actions">
+      <button id="save-pat-override" type="button">Use override</button>
+      <button id="clear-pat-override" type="button">Clear override</button>
+      <button id="close-settings" type="button">Close</button>
+    </div>
+    <p id="settings-status" role="status"></p>
+  </section>
   <nav id="toolbar" aria-label="Viewer controls">
     <button id="clipboard" type="button">Enable clipboard</button>
     <button id="fullscreen" type="button">Fullscreen</button>
@@ -110,12 +131,14 @@
     const ENCRYPTED_TOKEN_URL = "https://raw.githubusercontent.com/donbt256/remote-browser/main/local-viewer/actions-token.enc.json";
     let cachedGitHubToken = null;
     let cachedPassword = "";
+    let overrideGitHubToken = null;
 
     function decodeBase64(value) {
       return Uint8Array.from(atob(value), character => character.charCodeAt(0));
     }
 
     async function getGitHubToken() {
+      if (overrideGitHubToken) return overrideGitHubToken;
       const password = passwordInput.value;
       if (!password) {
         throw new Error("Enter your Browser password first. It is used for both Actions controls and VNC login.");
@@ -181,6 +204,46 @@
         throw new Error("Could not decrypt the Actions token. Check that the password matches the current BROWSER_PASSWORD secret.");
       }
     }
+
+    const settingsButton = document.querySelector("#settings-button");
+    const settingsPanel = document.querySelector("#settings-panel");
+    const patOverrideInput = document.querySelector("#pat-override");
+    const settingsStatus = document.querySelector("#settings-status");
+
+    function setSettingsOpen(open) {
+      settingsPanel.classList.toggle("open", open);
+      settingsPanel.setAttribute("aria-hidden", String(!open));
+      settingsButton.setAttribute("aria-expanded", String(open));
+      if (open) patOverrideInput.focus();
+    }
+
+    settingsButton.addEventListener("click", () => {
+      setSettingsOpen(!settingsPanel.classList.contains("open"));
+    });
+    document.querySelector("#close-settings").addEventListener("click", () => setSettingsOpen(false));
+
+    document.querySelector("#save-pat-override").addEventListener("click", () => {
+      const token = patOverrideInput.value.trim();
+      if (!token) {
+        settingsStatus.textContent = "Paste a PAT first.";
+        return;
+      }
+      if (!/^(github_pat_|ghp_)[A-Za-z0-9_]+$/.test(token)) {
+        settingsStatus.textContent = "That token does not look like a GitHub PAT. Check that you copied it completely.";
+        return;
+      }
+      overrideGitHubToken = token;
+      cachedGitHubToken = null;
+      cachedPassword = "";
+      patOverrideInput.value = "";
+      settingsStatus.textContent = "PAT override active for this page session. It has not been saved.";
+    });
+
+    document.querySelector("#clear-pat-override").addEventListener("click", () => {
+      overrideGitHubToken = null;
+      patOverrideInput.value = "";
+      settingsStatus.textContent = "PAT override cleared. GitHub controls will use the encrypted token and Browser password.";
+    });
 
     passwordInput.addEventListener("input", () => {
       if (passwordInput.value !== cachedPassword) {
