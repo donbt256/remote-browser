@@ -24,13 +24,18 @@
     body.connected { display: block; }
     body.connected #setup { display: none; }
     body.connected #screen { display: block; }
-    #toolbar { position: fixed; z-index: 2; top: 8px; right: 8px; display: flex; gap: 8px; opacity: .2; }
-    #toolbar:hover { opacity: 1; }
+    #corner-left, #corner-right { position: fixed; z-index: 2; bottom: 0; width: 84px; height: 84px; }
+    #corner-left { left: 0; }
+    #corner-right { right: 0; }
+    #toolbar { position: fixed; z-index: 3; bottom: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(100vw - 24px); padding: 8px; border: 1px solid #555; border-radius: 8px; background: #171717ed; box-shadow: 0 4px 20px #0008; opacity: 0; visibility: hidden; transform: translateY(8px); transition: opacity .15s ease, transform .15s ease, visibility .15s; }
+    #toolbar.right-aligned { left: auto; right: 12px; justify-content: flex-end; }
+    #toolbar.visible { opacity: 1; visibility: visible; transform: translateY(0); }
     #toolbar button { padding: 6px 9px; }
-    #settings-button { position: fixed; z-index: 5; right: 12px; bottom: 12px; padding: 9px 13px; opacity: .78; }
-    #settings-button:hover { opacity: 1; }
-    #settings-panel { display: none; position: fixed; z-index: 6; right: 12px; bottom: 58px; width: min(380px, calc(100vw - 24px)); padding: 16px; border: 1px solid #555; border-radius: 8px; background: #202020; box-shadow: 0 8px 28px #0009; }
+    #settings-button { padding: 6px 9px; }
+    #settings-panel { display: none; position: fixed; z-index: 6; left: 12px; bottom: 72px; width: min(380px, calc(100vw - 24px)); padding: 16px; border: 1px solid #555; border-radius: 8px; background: #202020; box-shadow: 0 8px 28px #0009; }
+    #settings-panel.right-aligned { left: auto; right: 12px; }
     #settings-panel.open { display: block; }
+    @media (prefers-reduced-motion: reduce) { #toolbar { transition: none; } }
     #settings-panel h2 { margin-top: 0; font-size: 1.1rem; }
     #settings-panel .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     #settings-panel .settings-actions button { flex: 1; }
@@ -67,7 +72,6 @@
     <p id="status" role="status"></p>
   </main>
   <div id="screen" aria-label="Remote desktop"></div>
-  <button id="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">Settings</button>
   <section id="settings-panel" aria-label="Viewer settings" aria-hidden="true">
     <h2>Viewer settings</h2>
     <p class="hint">Optional PAT override for GitHub Actions controls. When set, this token takes priority over the encrypted token. It is kept in memory only and cleared when this page reloads.</p>
@@ -80,11 +84,14 @@
     </div>
     <p id="settings-status" role="status"></p>
   </section>
+  <div id="corner-left" aria-hidden="true"></div>
+  <div id="corner-right" aria-hidden="true"></div>
   <nav id="toolbar" aria-label="Viewer controls">
     <button id="clipboard" type="button">Enable clipboard</button>
     <button id="fullscreen" type="button">Fullscreen</button>
     <button id="stop-workflow-toolbar" type="button">Stop browser</button>
     <button id="disconnect" type="button">Disconnect</button>
+    <button id="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">Settings</button>
   </nav>
   <script src="./novnc-bundle.js"></script>
   <script>
@@ -209,6 +216,47 @@
     const settingsPanel = document.querySelector("#settings-panel");
     const patOverrideInput = document.querySelector("#pat-override");
     const settingsStatus = document.querySelector("#settings-status");
+    const toolbar = document.querySelector("#toolbar");
+    const leftCorner = document.querySelector("#corner-left");
+    const rightCorner = document.querySelector("#corner-right");
+    let toolbarHideTimer = null;
+    let toolbarShowTimer = null;
+
+    function hideToolbarSoon() {
+      clearTimeout(toolbarHideTimer);
+      toolbarHideTimer = setTimeout(() => {
+        toolbar.classList.remove("visible");
+      }, 250);
+    }
+
+    function showToolbarFrom(side) {
+      clearTimeout(toolbarHideTimer);
+      clearTimeout(toolbarShowTimer);
+      toolbarShowTimer = setTimeout(() => {
+        toolbar.classList.toggle("right-aligned", side === "right");
+        settingsPanel.classList.toggle("right-aligned", side === "right");
+        toolbar.classList.add("visible");
+      }, 500);
+    }
+
+    for (const [corner, side] of [[leftCorner, "left"], [rightCorner, "right"]]) {
+      corner.addEventListener("pointerenter", () => showToolbarFrom(side));
+      corner.addEventListener("pointerleave", () => {
+        clearTimeout(toolbarShowTimer);
+        hideToolbarSoon();
+      });
+    }
+    toolbar.addEventListener("pointerenter", () => {
+      clearTimeout(toolbarShowTimer);
+      clearTimeout(toolbarHideTimer);
+    });
+    toolbar.addEventListener("pointerleave", hideToolbarSoon);
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        toolbar.classList.remove("visible");
+        setSettingsOpen(false);
+      }
+    });
 
     function setSettingsOpen(open) {
       settingsPanel.classList.toggle("open", open);
