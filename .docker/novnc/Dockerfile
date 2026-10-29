@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcb-xfixes0 libxcb-sync1 libxcb-xkb1 libxkbcommon-x11-0 \
     libx11-xcb1 libxrender1 libxi6 libxtst6 libxrandr2 libxcomposite1 \
     libxcursor1 libxdamage1 libxfixes3 libxss1 libxext6 libx11-6 \
-    libglib2.0-0 libnss3 libasound2t64 \
+    libglib2.0-0 libnss3 libasound2t64 libegl1 libgl1 libglx0 \
     && install -d -m 0755 /etc/apt/keyrings \
     && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
        | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg \
