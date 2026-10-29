@@ -2,7 +2,7 @@
 
 A disposable Ubuntu GitHub Actions runner hosts a full XFCE desktop with Google Chrome, exposed through a password-protected noVNC web client and a named Cloudflare Tunnel. Browser data is restored from and saved to an encrypted profile archive in a separate private GitHub repository.
 
-- **Browser URL:** the URL configured in `CLOUDFLARE_TUNNEL_URL`
+- **Browser URL:** set by the `CLOUDFLARE_TUNNEL_URL` Actions secret
 - **Main repository:** https://github.com/donbt256/remote-browser
 - **Private profile repository:** https://github.com/donbt256/browser-profile-storage
 - **Desktop:** XFCE + TigerVNC + noVNC + websockify
@@ -91,7 +91,7 @@ This setup uses a **named Cloudflare Tunnel**, not a temporary trycloudflare URL
 
 Important: `localhost:8080` means port 8080 on the GitHub Actions runner where `cloudflared` is running. Do not use the container's port 6080 as the public service. The authenticated proxy is on 8080; the noVNC service on 6080 is bound to loopback and should not be exposed directly.
 
-If you already have a named tunnel, you can reuse it. Add or confirm the the hostname in `CLOUDFLARE_TUNNEL_URL` public-hostname route to `http://localhost:8080`, and use that tunnel's token.
+If you already have a named tunnel, you can reuse it. Add or confirm the public-hostname route matching `CLOUDFLARE_TUNNEL_URL` and point it to `http://localhost:8080`, then use that tunnel's token.
 
 ## 4. Create the GitHub Actions secrets
 
@@ -99,7 +99,7 @@ Open the **main** repository `donbt256/remote-browser` and go to:
 
 **Settings → Secrets and variables → Actions → New repository secret**
 
-Create all four secrets below. Names are case-sensitive.
+Create all five secrets below. Names are case-sensitive.
 
 | Secret name | Value | Purpose |
 | --- | --- | --- |
@@ -136,7 +136,7 @@ The repository includes a separate workflow for building the local noVNC viewer.
 5. Download the `local-novnc-viewer` artifact and extract it.
 6. Keep the supplied `index.html` locally. Open it in your browser when you want to connect.
 
-The viewer is a local HTML file; it is not the browser desktop itself. It connects to the remote desktop at `the URL configured in `CLOUDFLARE_TUNNEL_URL`` and obtains the short-lived WebSocket ticket required by the proxy. If you use a different hostname, update the viewer's configured server URL to match.
+The viewer is a local HTML file; it is not the browser desktop itself. It connects to the URL printed in the workflow summary (from `CLOUDFLARE_TUNNEL_URL`) and obtains the short-lived WebSocket ticket required by the proxy.
 
 Do not add your GitHub token, Cloudflare tunnel token, or profile encryption key to the viewer HTML. The viewer only needs the public browser URL and the browser password when prompted.
 
@@ -145,9 +145,9 @@ Do not add your GitHub token, Cloudflare tunnel token, or profile encryption key
 1. Open **Actions → Remote Chromium Browser** in `donbt256/remote-browser`.
 2. Click **Run workflow**, select the default branch, and start it.
 3. Open the run and wait for the browser job to finish setup. In the workflow log or run summary, look for:
-   `Cloudflare Tunnel connected: the URL configured in `CLOUDFLARE_TUNNEL_URL``
+   `Cloudflare Tunnel connected: <your CLOUDFLARE_TUNNEL_URL value>`
 4. Open your local `index.html` viewer.
-5. Connect to `the URL configured in `CLOUDFLARE_TUNNEL_URL`` if the viewer asks for the server URL.
+5. Connect to the exact URL printed in the workflow summary if the viewer asks for the server URL.
 6. Enter the `BROWSER_PASSWORD` you set in GitHub Actions secrets.
 7. The remote noVNC desktop should appear, with Chrome running in the XFCE desktop.
 
@@ -192,7 +192,7 @@ Do not delete the `browser-profile` release, its `profile.tar.gz.gpg` asset, or 
 ### Cloudflare Tunnel does not connect
 
 - Confirm the token is from the intended named tunnel and was copied completely.
-- Check that the tunnel is enabled and the public-hostname route is the hostname in `CLOUDFLARE_TUNNEL_URL` → `http://localhost:8080`.
+- Check that the tunnel is enabled and its public-hostname route matches `CLOUDFLARE_TUNNEL_URL` → `http://localhost:8080`.
 - Make sure the DNS record for the hostname in `CLOUDFLARE_TUNNEL_URL` is associated with that tunnel.
 - Inspect the **Start Cloudflare Tunnel** step in the Actions logs. It prints the cloudflared log if the tunnel process exits or fails to register.
 - The hostname route should use HTTP to the local proxy; Cloudflare provides HTTPS at the public hostname.
