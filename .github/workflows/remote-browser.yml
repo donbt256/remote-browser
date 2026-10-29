@@ -319,89 +319,60 @@ jobs:
 
           const server = http.createServer((req, res) => {
             const url = new URL(req.url, 'http://localhost');
-            const bypass = '';
 
-            if (url.pathname === '/login' && req.method === 'GET') {
-              return sendLogin(res);
+            // Keep the public hostname as a connection endpoint, not a hosted
+            // noVNC website. The local viewer only needs /api/session and the
+            // WebSocket upgrade handled below.
+            if (url.pathname === '/health' && req.method === 'GET') {
+              res.writeHead(200, {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Cache-Control': 'no-store'
+              });
+              return res.end('ok');
             }
 
-            if (url.pathname === '/login' && req.method === 'POST') {
-              let body = '';
-              req.on('data', chunk => {
-                body += chunk;
-                if (body.length > 8192) req.destroy();
+            if (url.pathname === '/' || url.pathname === '/vnc.html' ||
+                url.pathname.startsWith('/app/') ||
+                url.pathname.startsWith('/core/') ||
+                url.pathname.startsWith('/vendor/')) {
+              res.writeHead(404, {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Cache-Control': 'no-store'
               });
-
-              req.on('end', () => {
-                const form = new URLSearchParams(body);
-                const submitted = form.get('password') || '';
-                const a = Buffer.from(submitted);
-                const b = Buffer.from(password);
-                const matches = a.length === b.length &&
-                  crypto.timingSafeEqual(a, b);
-
-                if (!matches) return sendLogin(res, true);
-
-                const expiry = String(
-                  Math.floor(Date.now() / 1000) + 8 * 60 * 60
-                );
-
-                res.writeHead(303, {
-                  'Set-Cookie':
-                    `rb_session=${expiry}.${signature(expiry)}; ` +
-                    'Path=/; HttpOnly; Secure; SameSite=None; Max-Age=28800',
-                  'Cache-Control': 'no-store',
-                  'Location': '/' + bypass
-                });
-                res.end();
-              });
-              return;
+              return res.end('The hosted noVNC interface is disabled. Use the local viewer HTML file.');
             }
 
-            if (url.pathname === '/api/session' && req.method === 'POST') {
-              res.setHeader('Access-Control-Allow-Origin', '*');
-              res.setHeader('Cache-Control', 'no-store');
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              let body = '';
-              req.on('data', chunk => {
-                body += chunk;
-                if (body.length > 8192) req.destroy();
+            if (url.pathname !== '/api/session' || req.method !== 'POST') {
+              res.writeHead(404, {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Cache-Control': 'no-store'
               });
-              req.on('end', () => {
-                const form = new URLSearchParams(body);
-                const submitted = form.get('password') || '';
-                const a = Buffer.from(submitted);
-                const b = Buffer.from(password);
-                const matches = a.length === b.length && crypto.timingSafeEqual(a, b);
-                if (!matches) {
-                  res.writeHead(401);
-                  return res.end(JSON.stringify({ error: 'Incorrect password.' }));
-                }
-                const expiry = String(Math.floor(Date.now() / 1000) + 120);
-                const ticket = expiry + '.' + ticketSignature(expiry);
-                res.writeHead(200);
-                res.end(JSON.stringify({ ticket, expires_in: 120 }));
-              });
-              return;
+              return res.end('Not found.');
             }
 
-            if (!validSession(req)) {
-              res.writeHead(303, {
-                'Cache-Control': 'no-store',
-                'Location': '/login' + bypass
-              });
-              return res.end();
-            }
-
-            if (url.pathname === '/') {
-              res.writeHead(302, {
-                'Cache-Control': 'no-store',
-                'Location': '/vnc.html?autoconnect=true&resize=remote&path=websockify'
-              });
-              return res.end();
-            }
-
-            proxy.web(req, res);
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Cache-Control', 'no-store');
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            let body = '';
+            req.on('data', chunk => {
+              body += chunk;
+              if (body.length > 8192) req.destroy();
+            });
+            req.on('end', () => {
+              const form = new URLSearchParams(body);
+              const submitted = form.get('password') || '';
+              const a = Buffer.from(submitted);
+              const b = Buffer.from(password);
+              const matches = a.length === b.length && crypto.timingSafeEqual(a, b);
+              if (!matches) {
+                res.writeHead(401);
+                return res.end(JSON.stringify({ error: 'Incorrect password.' }));
+              }
+              const expiry = String(Math.floor(Date.now() / 1000) + 120);
+              const ticket = expiry + '.' + ticketSignature(expiry);
+              res.writeHead(200);
+              res.end(JSON.stringify({ ticket, expires_in: 120 }));
+            });
           });
 
           server.on('upgrade', (req, socket, head) => {
@@ -468,7 +439,7 @@ jobs:
           echo $! > "$RUNNER_TEMP/browser-proxy.pid"
 
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8080/login -o /dev/null; then
+            if curl -fsS http://127.0.0.1:8080/health -o /dev/null; then
               echo "Password and WebSocket-ticket proxy is ready."
               exit 0
             fi
