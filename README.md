@@ -2,7 +2,7 @@
 
 A disposable Ubuntu GitHub Actions runner hosts a full XFCE desktop with Google Chrome, exposed through a password-protected noVNC web client and a named Cloudflare Tunnel. Browser data is restored from and saved to an encrypted profile archive in a separate private GitHub repository.
 
-- **Browser URL:** https://browser.dnly.org/
+- **Browser URL:** the URL configured in `CLOUDFLARE_TUNNEL_URL`
 - **Main repository:** https://github.com/donbt256/remote-browser
 - **Private profile repository:** https://github.com/donbt256/browser-profile-storage
 - **Desktop:** XFCE + TigerVNC + noVNC + websockify
@@ -31,7 +31,7 @@ The GitHub Actions runner is temporary. The encrypted profile repository is what
 2. It downloads the encrypted profile from the private `browser-profile-storage` repository, decrypts it using `PROFILE_ENCRYPTION_KEY`, and restores it to the container's `/config` directory.
 3. Docker builds and starts the desktop image from `.docker/novnc`. Chrome uses `/config/Chromium` as its profile directory.
 4. A small Node.js reverse proxy listens on runner-local port 8080. It protects the noVNC UI with `BROWSER_PASSWORD` and validates short-lived HMAC tickets for WebSocket upgrades.
-5. `cloudflared` connects the runner to the named Cloudflare Tunnel. Cloudflare routes `browser.dnly.org` to `http://localhost:8080`.
+5. `cloudflared` connects the runner to the named Cloudflare Tunnel. Cloudflare routes the hostname in `CLOUDFLARE_TUNNEL_URL` to `http://localhost:8080`.
 6. When the workflow is stopped, its cleanup steps stop the desktop, remove stale Chrome lock files, compress and encrypt the profile, and upload `profile.tar.gz.gpg` as a release asset in the private profile repository.
 
 The raw VNC port is not exposed publicly. Only the authenticated web proxy is routed through Cloudflare.
@@ -42,7 +42,7 @@ The raw VNC port is not exposed publicly. Only the authenticated web proxy is ro
 - A Cloudflare account managing the `dnly.org` domain and permission to create/manage a named Tunnel.
 - A private GitHub repository to store the encrypted profile.
 - A local copy of the provided noVNC viewer HTML (used to connect to the remote desktop).
-- Four GitHub Actions repository secrets, described below.
+- Five GitHub Actions repository secrets, described below.
 
 No self-hosted server is required. The browser runs on a GitHub-hosted runner while the workflow is active. GitHub-hosted runner limits and usage policies apply.
 
@@ -82,16 +82,16 @@ This setup uses a **named Cloudflare Tunnel**, not a temporary trycloudflare URL
 2. Open **Networking → Tunnels** (the exact dashboard label may vary) and create a named tunnel, for example `remote-browser-github-actions`.
 3. Select the connector option for a Docker/Linux or other token-based connector and copy the tunnel token. Keep it secret.
 4. In the tunnel's **Public Hostnames**, **Routes**, or equivalent configuration, add a public hostname:
-   - **Subdomain:** `browser`
-   - **Domain:** `dnly.org`
+   - **Public hostname:** choose the hostname you want to use, for example `browser.example.com`
    - **Service type:** `HTTP`
    - **Service URL:** `http://localhost:8080`
-5. Save the route. If Cloudflare offers to create the DNS record, accept it. Otherwise create the required proxied DNS route for `browser.dnly.org` through that tunnel using the Cloudflare dashboard's tunnel instructions.
+5. Save the route. If Cloudflare offers to create the DNS record, accept it. Otherwise create the required proxied DNS route for the hostname in `CLOUDFLARE_TUNNEL_URL` through that tunnel using the Cloudflare dashboard's tunnel instructions.
 6. Keep the token available for the GitHub secret `CLOUDFLARE_TUNNEL_TOKEN`.
+7. Record the full public URL for the hostname you configured, such as `https://browser.example.com`. Add that exact HTTPS origin as the `CLOUDFLARE_TUNNEL_URL` secret. Do not include a path.
 
 Important: `localhost:8080` means port 8080 on the GitHub Actions runner where `cloudflared` is running. Do not use the container's port 6080 as the public service. The authenticated proxy is on 8080; the noVNC service on 6080 is bound to loopback and should not be exposed directly.
 
-If you already have a named tunnel, you can reuse it. Add or confirm the `browser.dnly.org` public-hostname route to `http://localhost:8080`, and use that tunnel's token.
+If you already have a named tunnel, you can reuse it. Add or confirm the the hostname in `CLOUDFLARE_TUNNEL_URL` public-hostname route to `http://localhost:8080`, and use that tunnel's token.
 
 ## 4. Create the GitHub Actions secrets
 
@@ -107,6 +107,7 @@ Create all four secrets below. Names are case-sensitive.
 | `PROFILE_STORAGE_TOKEN` | The GitHub token created in step 2 | Read/write access to the private profile-storage repository and its release asset |
 | `PROFILE_ENCRYPTION_KEY` | A long, unique passphrase you create | Encrypts and decrypts the saved browser profile |
 | `CLOUDFLARE_TUNNEL_TOKEN` | The named tunnel token from step 3 | Authenticates the Cloudflare Tunnel connector |
+| `CLOUDFLARE_TUNNEL_URL` | Full public HTTPS origin, e.g. `https://browser.example.com` | URL printed in the workflow summary; use the same URL in the local viewer |
 
 ### Choose and preserve the encryption key
 
@@ -120,6 +121,7 @@ The browser password and profile encryption key are different secrets and serve 
 - [ ] `PROFILE_STORAGE_TOKEN` can read and write the private `browser-profile-storage` repository.
 - [ ] `PROFILE_ENCRYPTION_KEY` is saved securely and will remain stable across runs.
 - [ ] `CLOUDFLARE_TUNNEL_TOKEN` belongs to the named tunnel with the hostname route configured above.
+- [ ] `CLOUDFLARE_TUNNEL_URL` matches the hostname configured in the Cloudflare Tunnel public-hostname route and contains no path.
 
 GitHub will not show a secret's value after it has been saved. If one is wrong, edit the secret and replace its value.
 
@@ -134,7 +136,7 @@ The repository includes a separate workflow for building the local noVNC viewer.
 5. Download the `local-novnc-viewer` artifact and extract it.
 6. Keep the supplied `index.html` locally. Open it in your browser when you want to connect.
 
-The viewer is a local HTML file; it is not the browser desktop itself. It connects to the remote desktop at `https://browser.dnly.org/` and obtains the short-lived WebSocket ticket required by the proxy. If you use a different hostname, update the viewer's configured server URL to match.
+The viewer is a local HTML file; it is not the browser desktop itself. It connects to the remote desktop at `the URL configured in `CLOUDFLARE_TUNNEL_URL`` and obtains the short-lived WebSocket ticket required by the proxy. If you use a different hostname, update the viewer's configured server URL to match.
 
 Do not add your GitHub token, Cloudflare tunnel token, or profile encryption key to the viewer HTML. The viewer only needs the public browser URL and the browser password when prompted.
 
@@ -143,9 +145,9 @@ Do not add your GitHub token, Cloudflare tunnel token, or profile encryption key
 1. Open **Actions → Remote Chromium Browser** in `donbt256/remote-browser`.
 2. Click **Run workflow**, select the default branch, and start it.
 3. Open the run and wait for the browser job to finish setup. In the workflow log or run summary, look for:
-   `Cloudflare Tunnel connected: https://browser.dnly.org/`
+   `Cloudflare Tunnel connected: the URL configured in `CLOUDFLARE_TUNNEL_URL``
 4. Open your local `index.html` viewer.
-5. Connect to `https://browser.dnly.org/` if the viewer asks for the server URL.
+5. Connect to `the URL configured in `CLOUDFLARE_TUNNEL_URL`` if the viewer asks for the server URL.
 6. Enter the `BROWSER_PASSWORD` you set in GitHub Actions secrets.
 7. The remote noVNC desktop should appear, with Chrome running in the XFCE desktop.
 
@@ -190,15 +192,15 @@ Do not delete the `browser-profile` release, its `profile.tar.gz.gpg` asset, or 
 ### Cloudflare Tunnel does not connect
 
 - Confirm the token is from the intended named tunnel and was copied completely.
-- Check that the tunnel is enabled and the public-hostname route is `browser.dnly.org` → `http://localhost:8080`.
-- Make sure the DNS record for `browser.dnly.org` is associated with that tunnel.
+- Check that the tunnel is enabled and the public-hostname route is the hostname in `CLOUDFLARE_TUNNEL_URL` → `http://localhost:8080`.
+- Make sure the DNS record for the hostname in `CLOUDFLARE_TUNNEL_URL` is associated with that tunnel.
 - Inspect the **Start Cloudflare Tunnel** step in the Actions logs. It prints the cloudflared log if the tunnel process exits or fails to register.
 - The hostname route should use HTTP to the local proxy; Cloudflare provides HTTPS at the public hostname.
 
 ### The URL loads but asks for a password repeatedly
 
 - Make sure you are entering the GitHub secret value for `BROWSER_PASSWORD`, not the encryption key.
-- Confirm the viewer is using `https://browser.dnly.org/`.
+- Confirm the viewer is using the exact URL printed in the workflow summary, which comes from `CLOUDFLARE_TUNNEL_URL`.
 - If a browser password was changed, reload the viewer and sign in again.
 
 ### The page loads but the desktop does not appear
