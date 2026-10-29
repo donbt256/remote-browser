@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: remote-chromium-browser
@@ -21,6 +21,68 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Refresh encrypted Actions token
+        env:
+          BROWSER_PASSWORD: ${{ secrets.BROWSER_PASSWORD }}
+          ACTIONS_CONTROL_TOKEN: ${{ secrets.ACTIONS_CONTROL_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ "${#BROWSER_PASSWORD}" -lt 16 ]; then
+            echo "BROWSER_PASSWORD must be at least 16 characters."
+            exit 1
+          fi
+
+          if [ "${#ACTIONS_CONTROL_TOKEN}" -lt 20 ]; then
+            echo "ACTIONS_CONTROL_TOKEN is missing. Add a fine-grained PAT with Actions read/write access to this repository."
+            exit 1
+          fi
+
+          # Encrypt the Actions-control PAT using the same password entered
+          # in the local viewer for VNC authentication. The ciphertext is safe
+          # to publish; the password and plaintext token are never committed.
+          node <<'JAVASCRIPT'
+          const crypto = require('crypto');
+          const fs = require('fs');
+
+          const password = process.env.BROWSER_PASSWORD;
+          const token = process.env.ACTIONS_CONTROL_TOKEN;
+          const iterations = 1000000;
+          const salt = crypto.randomBytes(16);
+          const iv = crypto.randomBytes(12);
+          const key = crypto.pbkdf2Sync(password, salt, iterations, 32, 'sha256');
+          const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+          const encrypted = Buffer.concat([
+            cipher.update(token, 'utf8'),
+            cipher.final(),
+            cipher.getAuthTag()
+          ]);
+
+          const payload = {
+            version: 1,
+            kdf: 'PBKDF2-SHA-256',
+            iterations,
+            cipher: 'AES-256-GCM',
+            salt: salt.toString('base64'),
+            iv: iv.toString('base64'),
+            ciphertext: encrypted.toString('base64')
+          };
+
+          fs.writeFileSync(
+            'local-viewer/actions-token.enc.json',
+            JSON.stringify(payload, null, 2) + '\n',
+            { mode: 0o600 }
+          );
+          JAVASCRIPT
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f local-viewer/actions-token.enc.json
+          git commit -m "Refresh encrypted Actions token" --quiet
+          git push origin HEAD:main
+
+          echo "Encrypted Actions token refreshed and published."
 
       - name: Install dependencies
         run: |
