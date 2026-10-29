@@ -29,3 +29,8 @@ Cloudflare Tunnel supports WebSockets, required by noVNC. The tunnel token belon
 The workflow downloads `profile.tar.gz.gpg` as a GitHub Release asset named `browser-profile` in the private `donbt256/browser-profile-storage` repository before starting Chromium. On workflow cleanup, it stops Chromium, removes stale singleton lock files, encrypts the profile with AES-256, and replaces that release asset. This avoids GitHub's 100 MiB limit for individual Git files and prevents profile versions from accumulating in Git history. The first save automatically creates the release. For migration, if no release asset exists, the workflow falls back to the older Git-stored `profile.tar.gz.gpg` file and migrates it on save.
 
 Cancel the workflow from the local viewer or GitHub Actions when finished so the cleanup step can attempt to save the profile. Profile saving is not guaranteed if a runner is forcibly terminated.
+
+
+## Optional SoulseekQt desktop icon
+
+The XFCE desktop includes an **Install / Launch SoulseekQt** icon. SoulseekQt is not downloaded or installed during container startup, so it does not slow down browser startup. The first click downloads the official Linux AppImage from Soulseek and launches it; subsequent clicks reuse the downloaded AppImage. The application configuration is stored under `/config/SoulseekQt`, which is included in the encrypted persistent browser profile. The current official Linux download page lists the 64-bit AppImage as `SoulseekQt-2024-6-30.AppImage` ([official download page](https://www.slsknet.org/news/node/1)).
