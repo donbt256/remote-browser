@@ -7,7 +7,6 @@ A disposable Ubuntu GitHub Actions runner hosts a full XFCE desktop with Google 
 - **Private profile repository:** https://github.com/donbt256/browser-profile-storage
 - **Desktop:** XFCE + TigerVNC + noVNC + websockify
 - **Browser:** Google Chrome stable
-- **Optional desktop app:** SoulseekQt, downloaded only when its desktop icon is clicked
 
 The GitHub Actions runner is temporary. The encrypted profile repository is what preserves the browser profile between runs.
 
@@ -23,7 +22,6 @@ The GitHub Actions runner is temporary. The encrypted profile repository is what
 - [6. Start and use the browser](#6-start-and-use-the-browser)
 - [7. Stop the session and save the profile](#7-stop-the-session-and-save-the-profile)
 - [Persistent profile details](#persistent-profile-details)
-- [SoulseekQt](#soulseekqt)
 - [Troubleshooting](#troubleshooting)
 - [Security notes](#security-notes)
 
@@ -55,7 +53,6 @@ No self-hosted server is required. The browser runs on a GitHub-hosted runner wh
    - `.github/workflows/remote-browser.yml` — manually started browser session.
    - `.docker/novnc/Dockerfile` — desktop image definition.
    - `.docker/novnc/start-desktop.sh` — starts the desktop and Chrome.
-   - `.docker/novnc/install-soulseekqt.sh` and `.docker/novnc/soulseekqt.desktop` — optional SoulseekQt launcher.
 3. Open **Settings → Actions → General** and ensure Actions are permitted by the repository/organization policy. The workflow uses GitHub-hosted Ubuntu runners and Docker.
 4. The workflow is started manually from the Actions tab; it does not start on every push.
 
@@ -182,21 +179,6 @@ The profile archive is stored as the `profile.tar.gz.gpg` asset attached to the 
 
 Do not delete the `browser-profile` release, its `profile.tar.gz.gpg` asset, or the encryption key unless you intend to discard the saved profile. The profile can include cookies, active website sessions, history, extensions, and application settings. Treat the encrypted archive and its decryption key as sensitive.
 
-## SoulseekQt
-
-An **Install / Launch SoulseekQt** desktop icon is included. SoulseekQt is intentionally not downloaded during desktop startup.
-
-1. Open the remote XFCE desktop.
-2. Double-click **Install / Launch SoulseekQt**.
-3. On first use, the launcher downloads the Linux AppImage from the Soulseek download server and verifies that the download is an ELF executable.
-4. The launcher runs it with `--appimage-extract-and-run`, avoiding the need for FUSE.
-5. Subsequent launches reuse `/config/apps/SoulseekQt.AppImage`.
-6. Settings are stored under `/config/SoulseekQt`, so they are included in the encrypted profile.
-
-The Docker image includes common Qt/X11/XCB and EGL/OpenGL runtime libraries. If SoulseekQt still fails to launch, the terminal window is designed to show the specific error. Copy the complete error text for troubleshooting. A changed Dockerfile takes effect only after the next workflow run rebuilds the image.
-
-Official download information: [Soulseek](https://www.slsknet.org/news/node/1).
-
 ## Troubleshooting
 
 ### The workflow fails because a secret is missing
@@ -238,10 +220,6 @@ Official download information: [Soulseek](https://www.slsknet.org/news/node/1).
 
 The current workflow stores the encrypted archive as a release asset, not a normal Git file. This avoids the per-file Git limit. If migrating an old installation, the workflow can read the legacy file and writes it as a release asset the next time a profile is saved. Ensure the token has access to the profile repository.
 
-### SoulseekQt reports a missing shared library
-
-The library name in the terminal error identifies the missing runtime package. The Dockerfile already includes common Qt/XCB dependencies and `libegl1`, `libgl1`, and `libglx0`. If a new dependency is added to the Dockerfile, start a new Actions run so Docker rebuilds the image. Changes installed manually inside a running container are temporary.
-
 ### The run reaches its time limit
 
 The workflow is configured with a 350-minute job timeout. GitHub-hosted runner limits apply. Save and stop the session before the timeout where possible; do not rely on forced termination to preserve the most recent profile changes.
@@ -260,4 +238,4 @@ The workflow is configured with a 350-minute job timeout. GitHub-hosted runner l
 
 ## License and attribution
 
-Review the licenses and terms for Google Chrome, noVNC, TigerVNC, XFCE, websockify, Cloudflare Tunnel, and SoulseekQt before redistributing or adapting the project.
+Review the licenses and terms for Google Chrome, noVNC, TigerVNC, XFCE, websockify, and Cloudflare Tunnel before redistributing or adapting the project.
