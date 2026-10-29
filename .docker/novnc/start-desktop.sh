@@ -4,13 +4,6 @@ set -euo pipefail
 mkdir -p /config /home/browser/.vnc
 chown -R browser:browser /config /home/browser
 
-# Add the optional SoulseekQt launcher to the XFCE desktop. The client itself
-# is downloaded only when the user clicks the icon.
-install -d -o browser -g browser /home/browser/Desktop
-install -o browser -g browser -m 0755 \
-  /usr/share/applications/soulseekqt.desktop \
-  /home/browser/Desktop/SoulseekQt.desktop
-
 cat > /home/browser/.vnc/xstartup <<'XSTARTUP'
 #!/bin/sh
 unset SESSION_MANAGER
