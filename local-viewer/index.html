@@ -405,14 +405,26 @@
       }
     });
 
+    document.querySelector("#clipboard").textContent = "Paste local clipboard";
+    document.querySelector("#clipboard").title =
+      "Read your device clipboard and send its text to the remote desktop.";
     document.querySelector("#clipboard").addEventListener("click", async () => {
-      // Trigger the permission request only from an explicit user gesture.
-      // Once granted by the browser, noVNC can read/write clipboard normally.
+      // Clipboard reads require a direct user gesture in modern browsers.
+      // Explicitly send the local text to the VNC server instead of relying on
+      // focus events, which do not fire for every clipboard change.
+      if (!rfb) {
+        status.textContent = "Connect to the remote desktop before sending clipboard text.";
+        return;
+      }
       try {
-        await navigator.clipboard.readText();
-        status.textContent = "Clipboard access enabled.";
+        const text = await navigator.clipboard.readText();
+        rfb.clipboardPasteFrom(text);
+        status.textContent = text
+          ? "Local clipboard text sent to the remote desktop. Use Ctrl+V in the remote app."
+          : "Your local clipboard is empty.";
       } catch (error) {
-        status.textContent = "Clipboard access was not granted. Use the browser's site permissions to allow clipboard access, then try again.";
+        status.textContent = "Could not read the local clipboard. Allow clipboard access for this page, then try again. " +
+          (error && error.message ? error.message : "");
       }
     });
 
