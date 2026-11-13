@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Local noVNC Viewer</title>
+  <style>
+    :root { color-scheme: dark; font: 16px system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; background: #111; color: #eee; }
+    body { display: grid; place-items: center; }
+    #setup { width: min(520px, calc(100% - 32px)); padding: 18px 0; }
+    h1 { font-size: 1.35rem; }
+    form { display: grid; gap: 12px; }
+    label { display: grid; gap: 6px; }
+    input { width: 100%; padding: 11px; border: 1px solid #555; border-radius: 5px; background: #202020; color: #fff; font: inherit; }
+    button { padding: 11px 14px; border: 0; border-radius: 5px; background: #e5e5e5; color: #111; font: inherit; cursor: pointer; }
+    #status { min-height: 1.4em; color: #bbb; overflow-wrap: anywhere; white-space: pre-wrap; }
+    #actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    #actions button { padding: 10px 6px; }
+    #run-link { color: #9dcaff; overflow-wrap: anywhere; }
+    .hint { color: #aaa; font-size: .9rem; }
+    #screen { display: none; position: fixed; inset: 0; width: 100%; height: 100%; }
+    body.connected { display: block; }
+    body.connected #setup { display: none; }
+    body.connected #screen { display: block; }
+    #corner-left, #corner-right { position: fixed; z-index: 2; bottom: 0; width: 84px; height: 84px; }
+    #corner-left { left: 0; }
+    #corner-right { right: 0; }
+    #toolbar { position: fixed; z-index: 3; bottom: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(100vw - 24px); padding: 8px; border: 1px solid #555; border-radius: 8px; background: #171717ed; box-shadow: 0 4px 20px #0008; opacity: 0; visibility: hidden; transform: translateY(8px); transition: opacity .15s ease, transform .15s ease, visibility .15s; }
+    #toolbar.right-aligned { left: auto; right: 12px; justify-content: flex-end; }
+    #toolbar.visible { opacity: 1; visibility: visible; transform: translateY(0); }
+    #toolbar button { padding: 6px 9px; }
+    #settings-button { padding: 6px 9px; }
+    #settings-panel { display: none; position: fixed; z-index: 6; left: 12px; bottom: 72px; width: min(380px, calc(100vw - 24px)); padding: 16px; border: 1px solid #555; border-radius: 8px; background: #202020; box-shadow: 0 8px 28px #0009; }
+    #settings-panel.right-aligned { left: auto; right: 12px; }
+    #settings-panel.open { display: block; }
+    @media (prefers-reduced-motion: reduce) { #toolbar { transition: none; } }
+    #settings-panel h2 { margin-top: 0; font-size: 1.1rem; }
+    #settings-panel .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    #settings-panel .settings-actions button { flex: 1; }
+    #settings-status { min-height: 1.3em; color: #bbb; font-size: .9rem; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <main id="setup">
+    <h1>Local noVNC Viewer</h1>
+    <p>The viewer files run locally. Use the controls below to start, check, or stop the GitHub Actions browser session.</p>
+    <section aria-label="GitHub Actions controls">
+      <form id="actions-form">
+        <p class="hint">Enter your BROWSER_PASSWORD in the Browser password field below before using these controls. The same password decrypts the Actions token and logs in to the remote desktop. The encrypted token is downloaded from this public repository; the password and decrypted token are not saved.</p>
+        <div id="actions">
+          <button id="start-action" type="button">Start browser</button>
+          <button id="check-action" type="button">Check status</button>
+          <button id="stop-action" type="button">Stop browser</button>
+        </div>
+      </form>
+      <p id="action-status" role="status"></p>
+      <p><a id="run-link" hidden target="_blank" rel="noopener noreferrer">Open GitHub Actions run</a></p>
+    </section>
+    <hr>
+    <h2>Connect to a running browser</h2>
+    <form id="connect-form">
+      <label>Remote browser URL
+        <input id="server" type="url" placeholder="Paste the URL from the Actions summary" required autocomplete="url">
+      </label>
+      <label>Browser password
+        <input id="password" type="password" required autocomplete="current-password">
+      </label>
+      <button id="connect" type="submit">Connect</button>
+    </form>
+    <p id="status" role="status"></p>
+  </main>
+  <div id="screen" aria-label="Remote desktop"></div>
+  <section id="settings-panel" aria-label="Viewer settings" aria-hidden="true">
+    <h2>Viewer settings</h2>
+    <p class="hint">Optional PAT override for GitHub Actions controls. When set, this token takes priority over the encrypted token. It is kept in memory only and cleared when this page reloads.</p>
+    <label for="pat-override">Fine-grained GitHub PAT</label>
+    <input id="pat-override" type="password" autocomplete="off" placeholder="Paste token here">
+    <div class="settings-actions">
+      <button id="save-pat-override" type="button">Use override</button>
+      <button id="clear-pat-override" type="button">Clear override</button>
+      <button id="close-settings" type="button">Close</button>
+    </div>
+    <p id="settings-status" role="status"></p>
+  </section>
+  <div id="corner-left" aria-hidden="true"></div>
+  <div id="corner-right" aria-hidden="true"></div>
+  <nav id="toolbar" aria-label="Viewer controls">
+    <button id="clipboard" type="button">Enable clipboard</button>
+    <button id="fullscreen" type="button">Fullscreen</button>
+    <button id="stop-workflow-toolbar" type="button">Stop browser</button>
+    <button id="disconnect" type="button">Disconnect</button>
+    <button id="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">Settings</button>
+  </nav>
+  <script src="./novnc-bundle.js"></script>
+  <script>
+    const RFB = window.NoVNC?.default || window.NoVNC?.RFB;
+    if (!RFB) throw new Error("The local noVNC bundle is missing. Download the Local noVNC Viewer artifact from GitHub Actions.");
+
+    const form = document.querySelector("#connect-form");
+    const actionStatus = document.querySelector("#action-status");
+    const runLink = document.querySelector("#run-link");
+    const startActionButton = document.querySelector("#start-action");
+    const checkActionButton = document.querySelector("#check-action");
+    const stopActionButton = document.querySelector("#stop-action");
+    const GITHUB_API = "https://api.github.com";
+    const REPOSITORY = "donbt256/remote-browser";
+    const WORKFLOW = "remote-browser.yml";
+    let activeRun = null;
+    const serverInput = document.querySelector("#server");
+    const passwordInput = document.querySelector("#password");
+    const status = document.querySelector("#status");
+    const screen = document.querySelector("#screen");
+    const SERVER_STORAGE_KEY = "remote-browser.server-url";
+    let rfb = null;
+
+    // Remember the last remote URL on this device; never persist the password.
+    try {
+      const savedServer = localStorage.getItem(SERVER_STORAGE_KEY) || "";
+      // Migrate saved URLs from the retired ngrok tunnel to the stable hostname.
+      serverInput.value = savedServer && !savedServer.includes("ngrok")
+        ? savedServer
+        : "";
+      if (savedServer.includes("ngrok")) {
+        localStorage.removeItem(SERVER_STORAGE_KEY);
+      }
+    } catch (_) {}
+
+    serverInput.addEventListener("change", () => {
+      try {
+        const value = serverInput.value.trim();
+        if (value) localStorage.setItem(SERVER_STORAGE_KEY, value);
+        else localStorage.removeItem(SERVER_STORAGE_KEY);
+      } catch (_) {}
+    });
+
+    const ENCRYPTED_TOKEN_URL = "https://raw.githubusercontent.com/donbt256/remote-browser/main/local-viewer/actions-token.enc.json";
+    let cachedGitHubToken = null;
+    let cachedPassword = "";
+    let overrideGitHubToken = null;
+
+    function decodeBase64(value) {
+      return Uint8Array.from(atob(value), character => character.charCodeAt(0));
+    }
+
+    async function getGitHubToken() {
+      if (overrideGitHubToken) return overrideGitHubToken;
+      const password = passwordInput.value;
+      if (!password) {
+        throw new Error("Enter your Browser password first. It is used for both Actions controls and VNC login.");
+      }
+      if (cachedGitHubToken && cachedPassword === password) return cachedGitHubToken;
+
+      const response = await fetch(ENCRYPTED_TOKEN_URL + "?v=" + Date.now(), {
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        throw new Error("Could not download the encrypted Actions token (HTTP " + response.status + "). Run the browser workflow once from GitHub to create it.");
+      }
+
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (_) {
+        throw new Error("The encrypted Actions-token file is not valid JSON.");
+      }
+      if (payload.version !== 1 ||
+          payload.kdf !== "PBKDF2-SHA-256" ||
+          payload.cipher !== "AES-256-GCM" ||
+          !Number.isInteger(payload.iterations) ||
+          payload.iterations < 100000 ||
+          payload.iterations > 2000000) {
+        throw new Error("The encrypted Actions-token file has an unsupported format.");
+      }
+
+      try {
+        const passwordKey = await crypto.subtle.importKey(
+          "raw",
+          new TextEncoder().encode(password),
+          "PBKDF2",
+          false,
+          ["deriveKey"]
+        );
+        const key = await crypto.subtle.deriveKey(
+          {
+            name: "PBKDF2",
+            salt: decodeBase64(payload.salt),
+            iterations: payload.iterations,
+            hash: "SHA-256"
+          },
+          passwordKey,
+          { name: "AES-GCM", length: 256 },
+          false,
+          ["decrypt"]
+        );
+        const combined = decodeBase64(payload.ciphertext);
+        const plaintext = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: decodeBase64(payload.iv), tagLength: 128 },
+          key,
+          combined
+        );
+        const token = new TextDecoder().decode(plaintext).trim();
+        if (!token) throw new Error("The decrypted token was empty.");
+        cachedGitHubToken = token;
+        cachedPassword = password;
+        return token;
+      } catch (_) {
+        cachedGitHubToken = null;
+        cachedPassword = "";
+        throw new Error("Could not decrypt the Actions token. Check that the password matches the current BROWSER_PASSWORD secret.");
+      }
+    }
+
+    const settingsButton = document.querySelector("#settings-button");
+    const settingsPanel = document.querySelector("#settings-panel");
+    const patOverrideInput = document.querySelector("#pat-override");
+    const settingsStatus = document.querySelector("#settings-status");
+    const toolbar = document.querySelector("#toolbar");
+    const leftCorner = document.querySelector("#corner-left");
+    const rightCorner = document.querySelector("#corner-right");
+    let toolbarHideTimer = null;
+    let toolbarShowTimer = null;
+
+    function hideToolbarSoon() {
+      clearTimeout(toolbarHideTimer);
+      toolbarHideTimer = setTimeout(() => {
+        toolbar.classList.remove("visible");
+      }, 250);
+    }
+
+    function showToolbarFrom(side) {
+      clearTimeout(toolbarHideTimer);
+      clearTimeout(toolbarShowTimer);
+      toolbarShowTimer = setTimeout(() => {
+        toolbar.classList.toggle("right-aligned", side === "right");
+        settingsPanel.classList.toggle("right-aligned", side === "right");
+        toolbar.classList.add("visible");
+      }, 500);
+    }
+
+    for (const [corner, side] of [[leftCorner, "left"], [rightCorner, "right"]]) {
+      corner.addEventListener("pointerenter", () => showToolbarFrom(side));
+      corner.addEventListener("pointerleave", () => {
+        clearTimeout(toolbarShowTimer);
+        hideToolbarSoon();
+      });
+    }
+    toolbar.addEventListener("pointerenter", () => {
+      clearTimeout(toolbarShowTimer);
+      clearTimeout(toolbarHideTimer);
+    });
+    toolbar.addEventListener("pointerleave", hideToolbarSoon);
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        toolbar.classList.remove("visible");
+        setSettingsOpen(false);
+      }
+    });
+
+    function setSettingsOpen(open) {
+      settingsPanel.classList.toggle("open", open);
+      settingsPanel.setAttribute("aria-hidden", String(!open));
+      settingsButton.setAttribute("aria-expanded", String(open));
+      if (open) patOverrideInput.focus();
+    }
+
+    settingsButton.addEventListener("click", () => {
+      setSettingsOpen(!settingsPanel.classList.contains("open"));
+    });
+    document.querySelector("#close-settings").addEventListener("click", () => setSettingsOpen(false));
+
+    document.querySelector("#save-pat-override").addEventListener("click", () => {
+      const token = patOverrideInput.value.trim();
+      if (!token) {
+        settingsStatus.textContent = "Paste a PAT first.";
+        return;
+      }
+      if (!/^(github_pat_|ghp_)[A-Za-z0-9_]+$/.test(token)) {
+        settingsStatus.textContent = "That token does not look like a GitHub PAT. Check that you copied it completely.";
+        return;
+      }
+      overrideGitHubToken = token;
+      cachedGitHubToken = null;
+      cachedPassword = "";
+      patOverrideInput.value = "";
+      settingsStatus.textContent = "PAT override active for this page session. It has not been saved.";
+    });
+
+    document.querySelector("#clear-pat-override").addEventListener("click", () => {
+      overrideGitHubToken = null;
+      patOverrideInput.value = "";
+      settingsStatus.textContent = "PAT override cleared. GitHub controls will use the encrypted token and Browser password.";
+    });
+
+    passwordInput.addEventListener("input", () => {
+      if (passwordInput.value !== cachedPassword) {
+        cachedGitHubToken = null;
+        cachedPassword = "";
+      }
+    });
+
+    async function githubRequest(path, options = {}) {
+      const token = await getGitHubToken();
+      const response = await fetch(GITHUB_API + path, {
+        ...options,
+        headers: {
+          "Accept": "application/vnd.github+json",
+          "Authorization": "Bearer " + token,
+          "X-GitHub-Api-Version": "2022-11-28",
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...(options.headers || {})
+        }
+      });
+      if (!response.ok && response.status !== 204) {
+        let detail = "";
+        try { detail = (await response.json()).message || ""; } catch (_) {}
+        if (response.status === 401) throw new Error("GitHub rejected the token. Check that it is valid.");
+        if (response.status === 403) throw new Error("GitHub denied this request. The token needs Actions: Read and write access to donbt256/remote-browser.");
+        if (response.status === 404) throw new Error("GitHub could not find the workflow or run. Check repository access and the workflow filename.");
+        throw new Error("GitHub API error (HTTP " + response.status + "). " + detail);
+      }
+      if (response.status === 204) return null;
+      return response.json();
+    }
+
+    function showRun(run) {
+      if (!run) return;
+      activeRun = run;
+      runLink.href = run.html_url;
+      runLink.textContent = "Open GitHub Actions run #" + run.run_number;
+      runLink.hidden = false;
+      const state = run.status === "completed" ? "Completed: " + run.conclusion : "Status: " + run.status;
+      actionStatus.textContent = state + "\n" + run.name + " (run #" + run.run_number + ").";
+    }
+
+    async function findLatestRun() {
+      const data = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");
+      const runs = data.workflow_runs || [];
+      const run = runs.find(item => item.status !== "completed") || runs[0];
+      if (run) showRun(run);
+      else actionStatus.textContent = "No workflow_dispatch runs found.";
+      return run || null;
+    }
+
+    async function withActionBusy(button, label, callback) {
+      const buttons = [startActionButton, checkActionButton, stopActionButton, document.querySelector("#stop-workflow-toolbar")];
+      buttons.forEach(item => item.disabled = true);
+      actionStatus.textContent = label;
+      try { await callback(); }
+      catch (error) { actionStatus.textContent = error.message || String(error); }
+      finally { buttons.forEach(item => item.disabled = false); }
+    }
+
+    startActionButton.addEventListener("click", () => withActionBusy(startActionButton, "Starting GitHub Actions workflow…", async () => {
+      const before = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");
+      const previousRuns = before.workflow_runs || [];
+      const existingActiveRun = previousRuns.find(item => item.status !== "completed");
+      if (existingActiveRun) {
+        showRun(existingActiveRun);
+        actionStatus.textContent = "A browser workflow is already queued or running. Use its run link, or stop it before starting another.";
+        return;
+      }
+      const previousRunIds = new Set(previousRuns.map(item => item.id));
+      await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/dispatches", {
+        method: "POST", body: JSON.stringify({ ref: "main" })
+      });
+      actionStatus.textContent = "Start request accepted. Waiting for GitHub to create the run…";
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const data = await githubRequest("/repos/" + REPOSITORY + "/actions/workflows/" + WORKFLOW + "/runs?branch=main&event=workflow_dispatch&per_page=5");
+        const run = (data.workflow_runs || []).find(item => !previousRunIds.has(item.id));
+        if (run) { showRun(run); actionStatus.textContent = "Workflow started. Open the run to view progress and copy the HTTPS browser URL from its Summary when available."; return; }
+      }
+      actionStatus.textContent = "The dispatch request was sent, but the run has not appeared yet. Use Check status in a moment.";
+    }));
+
+    checkActionButton.addEventListener("click", () => withActionBusy(checkActionButton, "Checking GitHub Actions…", async () => {
+      await findLatestRun();
+      if (activeRun && activeRun.status !== "completed") actionStatus.textContent += "\nThe browser URL appears in the run Summary after the tunnel starts.";
+    }));
+
+    stopActionButton.addEventListener("click", () => withActionBusy(stopActionButton, "Finding the running browser workflow…", async () => {
+      const run = await findLatestRun();
+      if (!run) return;
+      if (run.status === "completed") { actionStatus.textContent = "This workflow run has already completed."; return; }
+      if (!confirm("Cancel browser workflow run #" + run.run_number + "? The workflow will attempt to save the encrypted browser profile before cleanup.")) return;
+      await githubRequest("/repos/" + REPOSITORY + "/actions/runs/" + run.id + "/cancel", { method: "POST" });
+      actionStatus.textContent = "Cancellation requested for run #" + run.run_number + ". GitHub Actions will attempt the profile-save step, but saving is not guaranteed if the runner is terminated.";
+    }));
+
+    function normalizedBase(value) {
+      const base = new URL(value.trim());
+      if (!["https:", "http:"].includes(base.protocol)) throw new Error("Use an http:// or https:// URL.");
+      if (base.username || base.password) throw new Error("Do not put credentials in the URL.");
+      return base;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (rfb) rfb.disconnect();
+      const button = document.querySelector("#connect");
+      button.disabled = true;
+      status.textContent = "Authenticating…";
+      try {
+        const enteredUrl = serverInput.value.trim();
+        if (enteredUrl) {
+          try { localStorage.setItem(SERVER_STORAGE_KEY, enteredUrl); } catch (_) {}
+        }
+        const base = normalizedBase(enteredUrl);
+        if (base.protocol !== "https:" && base.hostname !== "localhost" && base.hostname !== "127.0.0.1") {
+          throw new Error("Use the HTTPS URL shown in the GitHub Actions summary.");
+        }
+        base.pathname = "/api/session";
+        base.search = "";
+        base.hash = "";
+        const response = await fetch(base, {
+          method: "POST",
+          mode: "cors",
+          headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+          body: new URLSearchParams({ password: passwordInput.value })
+        });
+        if (!response.ok) throw new Error("Authentication request failed (HTTP " + response.status + ").");
+        const data = await response.json();
+        if (!data.ticket) throw new Error(data.error || "The server did not return a connection ticket.");
+
+        const ws = new URL("/websockify", serverInput.value.trim());
+        ws.protocol = ws.protocol === "https:" ? "wss:" : "ws:";
+        ws.searchParams.set("ticket", data.ticket);
+
+
+        screen.replaceChildren();
+        document.body.classList.add("connected");
+        rfb = new RFB(screen, ws.toString());
+        rfb.scaleViewport = true;
+        rfb.resizeSession = true;
+        rfb.showDotCursor = true;
+        rfb.addEventListener("connect", () => { status.textContent = "Connected."; });
+        rfb.addEventListener("disconnect", (e) => {
+          document.body.classList.remove("connected");
+          status.textContent = e.detail.clean ? "Disconnected." : "Connection lost. Check the Actions run and URL.";
+          rfb = null;
+        });
+        rfb.addEventListener("credentialsrequired", () => {
+          status.textContent = "The VNC server unexpectedly requested another password.";
+        });
+        status.textContent = "Connecting to remote desktop…";
+      } catch (error) {
+        status.textContent = error.message || String(error);
+        document.body.classList.remove("connected");
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.querySelector("#clipboard").textContent = "Paste local clipboard";
+    document.querySelector("#clipboard").title =
+      "Read your device clipboard and send its text to the remote desktop.";
+    document.querySelector("#clipboard").addEventListener("click", async () => {
+      // Clipboard reads require a direct user gesture in modern browsers.
+      // Explicitly send the local text to the VNC server instead of relying on
+      // focus events, which do not fire for every clipboard change.
+      if (!rfb) {
+        status.textContent = "Connect to the remote desktop before sending clipboard text.";
+        return;
+      }
+      try {
+        const text = await navigator.clipboard.readText();
+        rfb.clipboardPasteFrom(text);
+        status.textContent = text
+          ? "Local clipboard text sent to the remote desktop. Use Ctrl+V in the remote app."
+          : "Your local clipboard is empty.";
+      } catch (error) {
+        status.textContent = "Could not read the local clipboard. Allow clipboard access for this page, then try again. " +
+          (error && error.message ? error.message : "");
+      }
+    });
+
+    document.querySelector("#stop-workflow-toolbar").addEventListener("click", () => stopActionButton.click());
+
+    document.querySelector("#disconnect").addEventListener("click", () => {
+      if (rfb) rfb.disconnect();
+      else document.body.classList.remove("connected");
+    });
+    document.querySelector("#fullscreen").addEventListener("click", async () => {
+      try {
+        if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+        else await document.exitFullscreen();
+      } catch (error) { status.textContent = "Fullscreen unavailable: " + error.message; }
+    });
+  </script>
+</body>
+</html>
