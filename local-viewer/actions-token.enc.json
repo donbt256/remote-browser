@@ -3,7 +3,7 @@
   "kdf": "PBKDF2-SHA-256",
   "iterations": 1000000,
   "cipher": "AES-256-GCM",
-  "salt": "6pAT0we8Y6BMY4yaKa6DFg==",
-  "iv": "N2CgMBBZchzox3aJ",
-  "ciphertext": "NIcTdBGZaFBeASCQI4trTA2a4vfbblo0j2os6duQLsejhKoAysJouuQ/AoCrT2K4aaYHBDHPV6iWaJ/7McIIbgnpDuAvvahkyLCrIWHnN+qbrL27frtogQg/E4UiEPPm2LoTlQpOGb00mBiueQ=="
+  "salt": "aQlAHZ/7dWwNKmJqAyRaVg==",
+  "iv": "NKXsAnwUIr8NnMYa",
+  "ciphertext": "qv0axQimczavYVg0OcEOQSQSqpiC9Db3MkWGsY+T3nXvfUTJM+LMpNK9uH1bPqA7x0UyirNyXTb6fDh1ObwwgR1ii/7ZmEAMuSXWz53GdCP+q0VA6KUqJmyDdZGl1iQrI9kzmhnSBuQv97qteA=="
 }
